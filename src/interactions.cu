@@ -54,7 +54,7 @@ __host__ __device__ BSDF scatterRay(
 {
     BSDF bsdf;
     bsdf.wi = calculateRandomDirectionInHemisphere(normal, rng);
-    bsdf.bsdf = m.color / PI;
+    bsdf.bsdf = m.color;// / PI;
     bsdf.pdf = 1 / TWO_PI;
 
     return bsdf;

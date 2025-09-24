@@ -238,25 +238,22 @@ __global__ void computeIntersections(
     }
 }
 
-// Add the current iteration's output to the overall image
-__global__ void finalGather(int nPaths, glm::vec3* image, PathSegment* iterationPaths)
-{
-    int index = (blockIdx.x * blockDim.x) + threadIdx.x;
-
-    if (index < nPaths)
-    {
-        PathSegment iterationPath = iterationPaths[index];
-        image[iterationPath.pixelIndex] += iterationPath.radiance;
-    }
-}
-
 struct earlyTerm
 {
     __host__ __device__ bool operator()(PathSegment path) const
     {
-        return path.remainingBounces > 0 && path.t != -1;
+        return path.remainingBounces <= 0 || path.t < 0.0f;
     }
 };
+
+void streamCompact(int& num_paths, PathSegment* dev_paths)
+{
+    auto begin = thrust::device_pointer_cast(dev_paths);
+    auto end = begin + num_paths;
+
+    auto new_end = thrust::remove_if(begin, end, earlyTerm{});
+    num_paths = static_cast<int>(new_end - begin);
+}
 
 __global__ void shadeIntersection(
     int iter,
@@ -278,13 +275,14 @@ __global__ void shadeIntersection(
 
             if (material.emittance > 0.0f)
             {
-                pathSegments[idx].radiance = pathSegments[idx].throughput * material.color * material.emittance;
+                pathSegments[idx].radiance = material.color * material.emittance;
             }
             else
             {
+                pathSegments[idx].radiance = vec3(0.0f);
                 vec3 intersect = pathSegments[idx].ray.origin + pathSegments[idx].ray.direction * intersection.t;
                 BSDF bsdf = scatterRay(pathSegments[idx], intersection.surfaceNormal, material, rng);
-                pathSegments[idx].throughput *= bsdf.bsdf * abs(dot(intersection.surfaceNormal, bsdf.wi)) / bsdf.pdf;
+                pathSegments[idx].throughput *= bsdf.bsdf;//  * abs(dot(intersection.surfaceNormal, bsdf.wi)) / bsdf.pdf;
 
                 pathSegments[idx].ray.origin = intersect + intersection.surfaceNormal * EPSILON;
                 pathSegments[idx].ray.direction = bsdf.wi;
@@ -292,6 +290,22 @@ __global__ void shadeIntersection(
                 pathSegments[idx].remainingBounces--;
             }
         }
+        else
+        {
+            pathSegments[idx].throughput = vec3(0.0f);
+        }
+    }
+}
+
+// Add the current iteration's output to the overall image
+__global__ void finalGather(int nPaths, glm::vec3* image, PathSegment* iterationPaths)
+{
+    int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+    if (index < nPaths)
+    {
+        PathSegment iterationPath = iterationPaths[index];
+        image[iterationPath.pixelIndex] += iterationPath.radiance * iterationPath.throughput;
     }
 }
 
@@ -311,9 +325,10 @@ void pathtrace(uchar4* pbo, int iter)
     generateRayFromCamera << <blocksPerGrid2d, blockSize2d >> > (cam, iter, traceDepth, dev_paths);
     checkCUDAError("generate camera ray");
 
+    int depth = 0;
     PathSegment* dev_path_end = dev_paths + pixelcount;
     int num_paths = dev_path_end - dev_paths;
-    for (int depth = 0; depth <= traceDepth; depth++)
+    while (num_paths > 0 && depth < traceDepth)
     {
         cudaMemset(dev_intersections, 0, pixelcount * sizeof(ShadeableIntersection));
 
@@ -329,7 +344,6 @@ void pathtrace(uchar4* pbo, int iter)
             );
         checkCUDAError("trace one bounce");
         cudaDeviceSynchronize();
-        depth++;
 
         // shade intersections
         shadeIntersection << <numblocksPathSegmentTracing, blockSize1d >> > (
@@ -341,7 +355,8 @@ void pathtrace(uchar4* pbo, int iter)
             );
 
         // stream compaction
-
+        streamCompact(num_paths, dev_paths);
+        depth++;
 
         if (guiData != NULL)
         {
