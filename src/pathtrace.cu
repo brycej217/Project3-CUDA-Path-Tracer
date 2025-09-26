@@ -17,6 +17,8 @@
 #include "intersections.h"
 #include "interactions.h"
 
+#define STREAM_COMPACT
+#define MAT_SORT
 #define ERRORCHECK 1
 
 using namespace glm;
@@ -85,6 +87,8 @@ static Geom* dev_geoms = NULL;
 static Material* dev_materials = NULL;
 static PathSegment* dev_paths = NULL;
 static ShadeableIntersection* dev_intersections = NULL;
+static int* dev_keys1 = NULL;
+static int* dev_keys2 = NULL;
 static thrust::device_ptr<PathSegment> thrust_paths;
 // TODO: static variables for device memory, any extra info you need, etc
 // ...
@@ -115,6 +119,8 @@ void pathtraceInit(Scene* scene)
     cudaMalloc(&dev_intersections, pixelcount * sizeof(ShadeableIntersection));
     cudaMemset(dev_intersections, 0, pixelcount * sizeof(ShadeableIntersection));
 
+    cudaMalloc(&dev_keys1, pixelcount * sizeof(int));
+    cudaMalloc(&dev_keys2, pixelcount * sizeof(int));
     // TODO: initialize any extra device memeory you need
     thrust_paths = thrust::device_pointer_cast(dev_paths);
 
@@ -147,6 +153,7 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
     int x = (blockIdx.x * blockDim.x) + threadIdx.x;
     int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
+
     if (x < cam.resolution.x && y < cam.resolution.y) {
         int index = x + (y * cam.resolution.x);
         PathSegment& segment = pathSegments[index];
@@ -156,10 +163,16 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
         segment.radiance = vec3(0.0f);
         segment.throughput = vec3(1.0f);
 
+        // get noise values
+        thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, pathSegments[index].remainingBounces);
+        thrust::uniform_real_distribution<float> u(-0.5f, 0.5f);
+        float xNoise = u(rng);
+        float yNoise = u(rng);
+
         // TODO: implement antialiasing by jittering the ray
         segment.ray.direction = glm::normalize(cam.view
-            - cam.right * cam.pixelLength.x * ((float)x - (float)cam.resolution.x * 0.5f)
-            - cam.up * cam.pixelLength.y * ((float)y - (float)cam.resolution.y * 0.5f)
+            - cam.right * cam.pixelLength.x * ((float)(x + xNoise) - (float)cam.resolution.x * 0.5f)
+            - cam.up * cam.pixelLength.y * ((float)(y + yNoise) - (float)cam.resolution.y * 0.5f)
         );
 
         segment.pixelIndex = index;
@@ -177,7 +190,9 @@ __global__ void computeIntersections(
     PathSegment* pathSegments,
     Geom* geoms,
     int geoms_size,
-    ShadeableIntersection* intersections)
+    ShadeableIntersection* intersections,
+    int* keys1,
+    int* keys2)
 {
     int path_index = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -231,28 +246,13 @@ __global__ void computeIntersections(
             // The ray hits something
             intersections[path_index].t = t_min;
             intersections[path_index].materialId = geoms[hit_geom_index].materialid;
+            keys1[path_index] = geoms[hit_geom_index].materialid;
+            keys2[path_index] = geoms[hit_geom_index].materialid;
             intersections[path_index].surfaceNormal = normal;
         }
 
         pathSegments[path_index].t = intersections[path_index].t;
     }
-}
-
-struct earlyTerm
-{
-    __host__ __device__ bool operator()(PathSegment path) const
-    {
-        return path.remainingBounces <= 0 || path.t < 0.0f;
-    }
-};
-
-void streamCompact(int& num_paths, PathSegment* dev_paths)
-{
-    auto begin = thrust::device_pointer_cast(dev_paths);
-    auto end = begin + num_paths;
-
-    auto new_end = thrust::remove_if(begin, end, earlyTerm{});
-    num_paths = static_cast<int>(new_end - begin);
 }
 
 __global__ void shadeIntersection(
@@ -280,13 +280,12 @@ __global__ void shadeIntersection(
             else
             {
                 pathSegments[idx].radiance = vec3(0.0f);
-                vec3 intersect = pathSegments[idx].ray.origin + pathSegments[idx].ray.direction * intersection.t;
-                BSDF bsdf = scatterRay(pathSegments[idx], intersection.surfaceNormal, material, rng);
-                pathSegments[idx].throughput *= bsdf.bsdf;//  * abs(dot(intersection.surfaceNormal, bsdf.wi)) / bsdf.pdf;
+                Sample sample = sampleBSDF(pathSegments[idx], intersection, material, rng);
 
-                pathSegments[idx].ray.origin = intersect + intersection.surfaceNormal * EPSILON;
-                pathSegments[idx].ray.direction = bsdf.wi;
+                pathSegments[idx].throughput *= sample.lo;
 
+                // set new ray
+                pathSegments[idx].ray = sample.wi;
                 pathSegments[idx].remainingBounces--;
             }
         }
@@ -305,8 +304,36 @@ __global__ void finalGather(int nPaths, glm::vec3* image, PathSegment* iteration
     if (index < nPaths)
     {
         PathSegment iterationPath = iterationPaths[index];
-        image[iterationPath.pixelIndex] += iterationPath.radiance * iterationPath.throughput;
+        image[iterationPath.pixelIndex] += iterationPath.throughput * iterationPath.radiance;
     }
+}
+
+struct earlyTerm
+{
+    __host__ __device__ bool operator()(PathSegment path) const
+    {
+        return path.remainingBounces <= 0 || path.t < 0.0f;
+    }
+};
+
+void streamCompact(int& num_paths)
+{
+    auto begin = thrust::device_pointer_cast(dev_paths);
+    auto end = begin + num_paths;
+
+    auto new_end = thrust::remove_if(begin, end, earlyTerm{});
+    num_paths = static_cast<int>(new_end - begin);
+}
+
+void materialSort(int num_paths)
+{
+    auto thrust_paths = thrust::device_pointer_cast(dev_paths);
+    auto thrust_intersections = thrust::device_pointer_cast(dev_intersections);
+    auto thrust_keys1 = thrust::device_pointer_cast(dev_keys1);
+    auto thrust_keys2 = thrust::device_pointer_cast(dev_keys2);
+
+    thrust::sort_by_key(thrust_keys1, thrust_keys1 + num_paths, thrust_paths);
+    thrust::sort_by_key(thrust_keys2, thrust_keys2 + num_paths, thrust_intersections);
 }
 
 void pathtrace(uchar4* pbo, int iter)
@@ -340,10 +367,16 @@ void pathtrace(uchar4* pbo, int iter)
             dev_paths,
             dev_geoms,
             hst_scene->geoms.size(),
-            dev_intersections
+            dev_intersections,
+            dev_keys1,
+            dev_keys2
             );
         checkCUDAError("trace one bounce");
         cudaDeviceSynchronize();
+
+#ifdef MAT_SORT
+        materialSort(num_paths);
+#endif
 
         // shade intersections
         shadeIntersection << <numblocksPathSegmentTracing, blockSize1d >> > (
@@ -355,7 +388,11 @@ void pathtrace(uchar4* pbo, int iter)
             );
 
         // stream compaction
-        streamCompact(num_paths, dev_paths);
+
+#ifdef STREAM_COMPACT
+        streamCompact(num_paths);
+        
+#endif
         depth++;
 
         if (guiData != NULL)

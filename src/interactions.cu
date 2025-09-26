@@ -46,16 +46,54 @@ __host__ __device__ glm::vec3 calculateRandomDirectionInHemisphere(
         + sin(around) * over * perpendicularDirection2;
 }
 
-__host__ __device__ BSDF scatterRay(
-    PathSegment & pathSegment,
-    glm::vec3 normal,
+__host__ __device__ vec3 reflect(vec3 V, vec3 N)
+{
+    return V - 2 * dot(V, N) * N;
+}
+
+__host__ __device__ Sample calculateSpecular(
+    PathSegment& pathSegment,
+    ShadeableIntersection& intersection,
+    const Material& m,
+    thrust::default_random_engine& rng)
+{
+    Sample sample;
+
+    vec3 intersect = pathSegment.ray.origin + pathSegment.ray.direction * intersection.t;
+    sample.wi.origin = intersect + intersection.surfaceNormal * EPSILON;
+    sample.wi.direction = reflect(pathSegment.ray.direction, intersection.surfaceNormal);
+    sample.lo = m.specular.color;
+
+    return sample;
+}
+
+__host__ __device__ Sample calculateDiffuse(
+    PathSegment& pathSegment,
+    ShadeableIntersection& intersection,
+    const Material& m,
+    thrust::default_random_engine& rng)
+{
+    Sample sample;
+
+    vec3 intersect = pathSegment.ray.origin + pathSegment.ray.direction * intersection.t;
+    sample.wi.origin = intersect + intersection.surfaceNormal * EPSILON;
+    sample.wi.direction = calculateRandomDirectionInHemisphere(intersection.surfaceNormal, rng);
+    sample.lo = m.color; // attenuate color (perfectly diffuse surface scatter light equally in all directions so amount of potential light coming towards wo is constant)
+
+    return sample;
+}
+
+__host__ __device__ Sample sampleBSDF(
+    PathSegment& pathSegment,
+    ShadeableIntersection& intersection,
     const Material &m,
     thrust::default_random_engine &rng)
 {
-    BSDF bsdf;
-    bsdf.wi = calculateRandomDirectionInHemisphere(normal, rng);
-    bsdf.bsdf = m.color;// / PI;
-    bsdf.pdf = 1 / TWO_PI;
+    // diffuse
+    if (m.hasSpecular)
+    {
+        return calculateSpecular(pathSegment, intersection, m, rng);
+    }
 
-    return bsdf;
+    return calculateDiffuse(pathSegment, intersection, m, rng);
 }

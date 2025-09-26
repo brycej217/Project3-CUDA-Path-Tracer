@@ -40,8 +40,8 @@ __host__ __device__ glm::vec3 calculateRandomDirectionInHemisphere(
  *
  * You may need to change the parameter list for your purposes!
  */
-__host__ __device__ BSDF scatterRay(
+__host__ __device__ Sample sampleBSDF(
     PathSegment& pathSegment,
-    glm::vec3 normal,
+    ShadeableIntersection& intersection,
     const Material& m,
     thrust::default_random_engine& rng);

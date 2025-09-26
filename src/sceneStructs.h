@@ -41,6 +41,7 @@ struct Material
         float exponent;
         glm::vec3 color;
     } specular;
+    bool hasSpecular;
     float hasReflective;
     float hasRefractive;
     float indexOfRefraction;
@@ -78,11 +79,10 @@ struct PathSegment
     float t;
 };
 
-struct BSDF
+struct Sample
 {
-    glm::vec3 wi;
-    glm::vec3 bsdf;
-    float pdf;
+    glm::vec3 lo;
+    Ray wi;
 };
 
 // Use with a corresponding PathSegment to do:
