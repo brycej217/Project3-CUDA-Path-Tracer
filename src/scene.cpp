@@ -1,6 +1,7 @@
 #include "scene.h"
 
 #include "utilities.h"
+#include "intersections.h"
 
 #include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtx/string_cast.hpp>
@@ -10,9 +11,18 @@
 #include <iostream>
 #include <string>
 #include <unordered_map>
+#include <random>
 
 using namespace std;
 using json = nlohmann::json;
+
+AABB surroundingBox(AABB a, AABB b)
+{
+    AABB aabb;
+    aabb.min = glm::vec3(fmin(a.min.x, b.min.x), fmin(a.min.y, b.min.y), fmin(a.min.z, b.min.z));
+    aabb.max = glm::vec3(fmax(a.max.x, b.max.x), fmax(a.max.y, b.max.y), fmax(a.max.z, b.max.z));
+    return aabb;
+}
 
 Scene::Scene(string filename)
 {
@@ -89,6 +99,15 @@ void Scene::loadFromJSON(const std::string& jsonName)
         newGeom.inverseTransform = glm::inverse(newGeom.transform);
         newGeom.invTranspose = glm::inverseTranspose(newGeom.transform);
 
+        if (type == "cube")
+        {
+            boxAABB(newGeom);
+        }
+        else
+        {
+            sphereAABB(newGeom);
+        }
+
         geoms.push_back(newGeom);
     }
     const auto& cameraData = data["Camera"];
@@ -123,4 +142,84 @@ void Scene::loadFromJSON(const std::string& jsonName)
     int arraylen = camera.resolution.x * camera.resolution.y;
     state.image.resize(arraylen);
     std::fill(state.image.begin(), state.image.end(), glm::vec3());
+
+    // BUILD ACCELERATION STRCTURES
+    BVHNode root;
+    nodes.push_back(root);
+    buildBVH(0);
+}
+
+void Scene::buildBVH(int index)
+{
+    BVHNode& root = nodes[index];
+    root.left = root.right = -1;
+    root.startGeom = 0;
+    root.numGeoms = geoms.size();
+    updateNodeAABB(index);
+    subdivide(index);
+}
+
+void Scene::updateNodeAABB(int index)
+{
+    BVHNode& node = nodes[index];
+    node.aabb.min = glm::vec3(1e30f);
+    node.aabb.max = glm::vec3(-1e30f);
+
+    for (int i = node.startGeom; i < node.startGeom + node.numGeoms; i++)
+    {
+        node.aabb = surroundingBox(node.aabb, geoms[i].aabb);
+    }
+}
+
+void Scene::subdivide(int index)
+{
+    BVHNode& node = nodes[index];
+
+    if (node.numGeoms <= 2) return;
+
+    // determine split axis
+    glm::vec3 extent = node.aabb.max - node.aabb.min;
+    int xyz = 0;
+    if (extent.y > extent.x) xyz = 1;
+    if (extent.z > extent[xyz]) xyz = 2;
+    float splitPos = node.aabb.min[xyz] + extent[xyz] * 0.5f;
+
+    // split in place
+    int i = node.startGeom;
+    int j = i + node.numGeoms - 1;
+
+    while (i <= j)
+    {
+        if (geoms[i].getCenter()[xyz] < splitPos)
+        {
+            i++;
+        }
+        else
+        {
+            swap(geoms[i], geoms[j--]);
+        }    
+    }
+
+    int leftCount = i - node.startGeom;
+    if (leftCount == 0 || leftCount == node.numGeoms) return;
+
+    // create child nodes
+    BVHNode leftNode;
+    BVHNode rightNode;
+    int left = nodes.size();
+    nodes.push_back(leftNode);
+    int right = nodes.size();
+    nodes.push_back(rightNode);
+
+    nodes[left].startGeom = node.startGeom;
+    nodes[left].numGeoms = leftCount;
+    nodes[right].startGeom = i;
+    nodes[right].numGeoms = node.numGeoms - leftCount;
+    node.left = left;
+    node.right = right;
+    node.numGeoms = 0;
+    updateNodeAABB(left);
+    updateNodeAABB(right);
+    subdivide(left);
+    subdivide(right);
 }

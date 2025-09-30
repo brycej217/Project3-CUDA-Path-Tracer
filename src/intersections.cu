@@ -111,3 +111,18 @@ __host__ __device__ float sphereIntersectionTest(
 
     return glm::length(r.origin - intersectionPoint);
 }
+
+__host__ __device__ void boxAABB(Geom& box)
+{
+    box.aabb.min = (multiplyMV(box.transform, glm::vec4(-0.5f, -0.5f, -0.5f, 1.0f)));
+    box.aabb.max = (multiplyMV(box.transform, glm::vec4(0.5f, 0.5f, 0.5f, 1.0f)));
+}
+
+__host__ __device__ void sphereAABB(Geom& sphere)
+{
+    glm::vec3 center = multiplyMV(sphere.transform, glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+    float radius = 0.5f;
+
+    sphere.aabb.min = (center - glm::vec3(radius));
+    sphere.aabb.max = (center + glm::vec3(radius));
+}

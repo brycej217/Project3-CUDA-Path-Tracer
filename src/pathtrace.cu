@@ -84,6 +84,7 @@ static Scene* hst_scene = NULL;
 static GuiDataContainer* guiData = NULL;
 static glm::vec3* dev_image = NULL;
 static Geom* dev_geoms = NULL;
+static BVHNode* dev_nodes = NULL;
 static Material* dev_materials = NULL;
 static PathSegment* dev_paths = NULL;
 static ShadeableIntersection* dev_intersections = NULL;
@@ -124,6 +125,10 @@ void pathtraceInit(Scene* scene)
     // TODO: initialize any extra device memeory you need
     thrust_paths = thrust::device_pointer_cast(dev_paths);
 
+    // BVH Nodes
+
+    cudaMalloc(&dev_nodes, scene->nodes.size() * sizeof(BVHNode));
+    cudaMemcpy(dev_nodes, scene->nodes.data(), scene->nodes.size() * sizeof(BVHNode), cudaMemcpyHostToDevice);
 
     checkCUDAError("pathtraceInit");
 }
@@ -136,6 +141,9 @@ void pathtraceFree()
     cudaFree(dev_materials);
     cudaFree(dev_intersections);
     // TODO: clean up any extra device memory you created
+    cudaFree(dev_nodes);
+    cudaFree(dev_keys1);
+    cudaFree(dev_keys2);
 
     checkCUDAError("pathtraceFree");
 }
@@ -180,6 +188,43 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
     }
 }
 
+
+__host__ __device__ float intersect(Geom* geoms, PathSegment& pathSegment, int start, int end, float& t_min, int& hit_geom_index, glm::vec3& intersect_point, glm::vec3& normal)
+{
+    float t;
+    bool outside = true;
+
+    glm::vec3 tmp_intersect;
+    glm::vec3 tmp_normal;
+
+    for (int i = start; i < start + end; i++)
+    {
+        Geom& geom = geoms[i];
+
+        if (geom.type == CUBE)
+        {
+            t = boxIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, outside);
+        }
+        else if (geom.type == SPHERE)
+        {
+            t = sphereIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, outside);
+        }
+        // TODO: add more intersection tests here... triangle? metaball? CSG?
+
+        // Compute the minimum t from the intersection tests to determine what
+        // scene geometry object was hit first.
+        if (t > 0.0f && t_min > t)
+        {
+            t_min = t;
+            hit_geom_index = i;
+            intersect_point = tmp_intersect;
+            normal = tmp_normal;
+        }
+    }
+
+    return t_min;
+}
+
 // TODO:
 // computeIntersections handles generating ray intersections ONLY.
 // Generating new rays is handled in your shader(s).
@@ -188,6 +233,8 @@ __global__ void computeIntersections(
     int depth,
     int num_paths,
     PathSegment* pathSegments,
+    BVHNode* nodes,
+    int num_nodes,
     Geom* geoms,
     int geoms_size,
     ShadeableIntersection* intersections,
@@ -198,7 +245,7 @@ __global__ void computeIntersections(
 
     if (path_index < num_paths)
     {
-        PathSegment pathSegment = pathSegments[path_index];
+        PathSegment& pathSegment = pathSegments[path_index];
 
         float t;
         glm::vec3 intersect_point;
@@ -207,34 +254,24 @@ __global__ void computeIntersections(
         int hit_geom_index = -1;
         bool outside = true;
 
-        glm::vec3 tmp_intersect;
-        glm::vec3 tmp_normal;
+        // traverse BVH
+        int stack[64];
+        int sp = 0;
+        stack[sp++] = 0;
 
-        // naive parse through global geoms
-
-        for (int i = 0; i < geoms_size; i++)
+        while (sp)
         {
-            Geom& geom = geoms[i];
+            int i = stack[--sp];
 
-            if (geom.type == CUBE)
-            {
-                t = boxIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, outside);
-            }
-            else if (geom.type == SPHERE)
-            {
-                t = sphereIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, outside);
-            }
-            // TODO: add more intersection tests here... triangle? metaball? CSG?
+            if (!nodes[i].aabb.hit(pathSegment.ray)) continue;
 
-            // Compute the minimum t from the intersection tests to determine what
-            // scene geometry object was hit first.
-            if (t > 0.0f && t_min > t)
+            if (nodes[i].numGeoms > 0)
             {
-                t_min = t;
-                hit_geom_index = i;
-                intersect_point = tmp_intersect;
-                normal = tmp_normal;
+                intersect(geoms, pathSegment, nodes[i].startGeom, nodes[i].numGeoms, t_min, hit_geom_index, intersect_point, normal);
             }
+
+            if (nodes[i].right != -1) stack[sp++] = nodes[i].right;
+            if (nodes[i].left != -1) stack[sp++] = nodes[i].left;
         }
 
         if (hit_geom_index == -1)
@@ -365,6 +402,8 @@ void pathtrace(uchar4* pbo, int iter)
             depth,
             num_paths,
             dev_paths,
+            dev_nodes,
+            hst_scene->nodes.size(),
             dev_geoms,
             hst_scene->geoms.size(),
             dev_intersections,
@@ -391,7 +430,6 @@ void pathtrace(uchar4* pbo, int iter)
 
 #ifdef STREAM_COMPACT
         streamCompact(num_paths);
-        
 #endif
         depth++;
 
