@@ -18,7 +18,6 @@ __host__ __device__ float boxIntersectionTest(
     for (int xyz = 0; xyz < 3; ++xyz)
     {
         float qdxyz = q.direction[xyz];
-        /*if (glm::abs(qdxyz) > 0.00001f)*/
         {
             float t1 = (-0.5f - q.origin[xyz]) / qdxyz;
             float t2 = (+0.5f - q.origin[xyz]) / qdxyz;
@@ -52,7 +51,6 @@ __host__ __device__ float boxIntersectionTest(
         normal = glm::normalize(multiplyMV(box.invTranspose, glm::vec4(tmin_n, 0.0f)));
         return glm::length(r.origin - intersectionPoint);
     }
-
     return -1;
 }
 

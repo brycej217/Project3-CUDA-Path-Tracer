@@ -71,7 +71,7 @@ struct Geom
 
     glm::vec3 getCenter()
     {
-        return glm::vec3(transform * glm::vec4(0.0f));
+        return glm::vec3(transform * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
     }
 };
 

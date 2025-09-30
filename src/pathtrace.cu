@@ -189,7 +189,7 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
 }
 
 
-__host__ __device__ float intersect(Geom* geoms, PathSegment& pathSegment, int start, int end, float& t_min, int& hit_geom_index, glm::vec3& intersect_point, glm::vec3& normal)
+__host__ __device__ float intersectGeoms(Geom* geoms, PathSegment& pathSegment, int start, int end, float& t_min, int& hit_geom_index, glm::vec3& intersect_point, glm::vec3& normal)
 {
     float t;
     bool outside = true;
@@ -221,7 +221,6 @@ __host__ __device__ float intersect(Geom* geoms, PathSegment& pathSegment, int s
             normal = tmp_normal;
         }
     }
-
     return t_min;
 }
 
@@ -263,15 +262,15 @@ __global__ void computeIntersections(
         {
             int i = stack[--sp];
 
-            if (!nodes[i].aabb.hit(pathSegment.ray)) continue;
+            if (i < 0 || !nodes[i].aabb.hit(pathSegment.ray)) continue;
 
             if (nodes[i].numGeoms > 0)
             {
-                intersect(geoms, pathSegment, nodes[i].startGeom, nodes[i].numGeoms, t_min, hit_geom_index, intersect_point, normal);
+                intersectGeoms(geoms, pathSegment, nodes[i].startGeom, nodes[i].numGeoms, t_min, hit_geom_index, intersect_point, normal);
             }
 
-            if (nodes[i].right != -1) stack[sp++] = nodes[i].right;
-            if (nodes[i].left != -1) stack[sp++] = nodes[i].left;
+            stack[sp++] = nodes[i].right;
+            stack[sp++] = nodes[i].left;
         }
 
         if (hit_geom_index == -1)

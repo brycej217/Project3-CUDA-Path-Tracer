@@ -16,6 +16,8 @@
 using namespace std;
 using json = nlohmann::json;
 
+static int nodesUsed = 1;
+
 AABB surroundingBox(AABB a, AABB b)
 {
     AABB aabb;
@@ -144,17 +146,17 @@ void Scene::loadFromJSON(const std::string& jsonName)
     std::fill(state.image.begin(), state.image.end(), glm::vec3());
 
     // BUILD ACCELERATION STRCTURES
-    BVHNode root;
-    nodes.push_back(root);
+    nodes.resize(geoms.size() * 2 - 1);
     buildBVH(0);
+
+
 }
 
 void Scene::buildBVH(int index)
 {
-    BVHNode& root = nodes[index];
-    root.left = root.right = -1;
-    root.startGeom = 0;
-    root.numGeoms = geoms.size();
+    nodes[index].left = nodes[index].right = -1;
+    nodes[index].startGeom = 0;
+    nodes[index].numGeoms = geoms.size();
     updateNodeAABB(index);
     subdivide(index);
 }
@@ -175,8 +177,11 @@ void Scene::subdivide(int index)
 {
     BVHNode& node = nodes[index];
 
-    if (node.numGeoms <= 2) return;
-
+    if (node.numGeoms <= 2)
+    {
+        nodes[index].left = nodes[index].right = -1;
+        return;
+    }
     // determine split axis
     glm::vec3 extent = node.aabb.max - node.aabb.min;
     int xyz = 0;
@@ -201,23 +206,22 @@ void Scene::subdivide(int index)
     }
 
     int leftCount = i - node.startGeom;
-    if (leftCount == 0 || leftCount == node.numGeoms) return;
+    if (leftCount == 0 || leftCount == node.numGeoms)
+    {
+        node.left = node.right = -1;
+        return;
+    }
 
-    // create child nodes
-    BVHNode leftNode;
-    BVHNode rightNode;
-    int left = nodes.size();
-    nodes.push_back(leftNode);
-    int right = nodes.size();
-    nodes.push_back(rightNode);
+    int left = nodesUsed++;
+    int right = nodesUsed++;
 
-    nodes[left].startGeom = node.startGeom;
+    nodes[left].startGeom = nodes[index].startGeom;
     nodes[left].numGeoms = leftCount;
     nodes[right].startGeom = i;
-    nodes[right].numGeoms = node.numGeoms - leftCount;
-    node.left = left;
-    node.right = right;
-    node.numGeoms = 0;
+    nodes[right].numGeoms = nodes[index].numGeoms - leftCount;
+    nodes[index].left = left;
+    nodes[index].right = right;
+    nodes[index].numGeoms = 0;
     updateNodeAABB(left);
     updateNodeAABB(right);
     subdivide(left);
