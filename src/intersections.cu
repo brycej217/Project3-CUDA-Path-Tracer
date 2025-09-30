@@ -112,15 +112,42 @@ __host__ __device__ float sphereIntersectionTest(
 
 __host__ __device__ void boxAABB(Geom& box)
 {
-    box.aabb.min = (multiplyMV(box.transform, glm::vec4(-0.5f, -0.5f, -0.5f, 1.0f)));
-    box.aabb.max = (multiplyMV(box.transform, glm::vec4(0.5f, 0.5f, 0.5f, 1.0f)));
+    glm::vec3 min(1e30f);
+    glm::vec3 max(-1e30f);
+
+    glm::vec3 corners[8] = 
+    {
+        {-0.5f, -0.5f, -0.5f},
+        { 0.5f, -0.5f, -0.5f},
+        {-0.5f,  0.5f, -0.5f},
+        { 0.5f,  0.5f, -0.5f},
+        {-0.5f, -0.5f,  0.5f},
+        { 0.5f, -0.5f,  0.5f},
+        {-0.5f,  0.5f,  0.5f},
+        { 0.5f,  0.5f,  0.5f}
+    };
+
+    for (int i = 0; i < 8; i++) 
+    {
+        glm::vec3 corner = multiplyMV(box.transform, glm::vec4(corners[i], 1.0f));
+        min = glm::min(min, corner);
+        max = glm::max(max, corner);
+    }
+
+    box.aabb.min = min;
+    box.aabb.max = max;
 }
 
 __host__ __device__ void sphereAABB(Geom& sphere)
 {
     glm::vec3 center = multiplyMV(sphere.transform, glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
-    float radius = 0.5f;
 
-    sphere.aabb.min = (center - glm::vec3(radius));
-    sphere.aabb.max = (center + glm::vec3(radius));
+    float scaleX = glm::length(glm::vec3(sphere.transform[0])); // column 0
+    float scaleY = glm::length(glm::vec3(sphere.transform[1])); // column 1
+    float scaleZ = glm::length(glm::vec3(sphere.transform[2])); // column 2
+
+    float radius = 0.5f * glm::max(scaleX, glm::max(scaleY, scaleZ));
+
+    sphere.aabb.min = center - glm::vec3(radius);
+    sphere.aabb.max = center + glm::vec3(radius);
 }

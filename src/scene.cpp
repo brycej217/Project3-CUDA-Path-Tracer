@@ -148,8 +148,6 @@ void Scene::loadFromJSON(const std::string& jsonName)
     // BUILD ACCELERATION STRCTURES
     nodes.resize(geoms.size() * 2 - 1);
     buildBVH(0);
-
-
 }
 
 void Scene::buildBVH(int index)
