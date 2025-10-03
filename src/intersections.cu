@@ -124,8 +124,8 @@ __host__ __device__ float triangleIntersectionTest(Triangle tri,
     if (intersect)
     {
         float w = 1 - bary.x - bary.y;
-        intersectionPoint = bary.x * tri.vertices[0].position + bary.y * tri.vertices[1].position + w * tri.vertices[2].position;
-        normal = bary.x * tri.vertices[0].normal + bary.y * tri.vertices[1].normal + w * tri.vertices[2].normal;
+        intersectionPoint = w * tri.vertices[0].position + bary.x * tri.vertices[1].position + bary.y * tri.vertices[2].position;
+        normal = glm::normalize(w * tri.vertices[0].normal + bary.x * tri.vertices[1].normal + bary.y * tri.vertices[2].normal);
 
         t = bary.z;
     }

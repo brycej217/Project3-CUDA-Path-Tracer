@@ -87,8 +87,8 @@ void Scene::initCamera(const aiScene* scene)
     else
     {
         fovy = 45.0;
-        camera.position = glm::vec3(0.0, -10.0, 50.5);
-        camera.lookAt = glm::vec3(0.0, 5.0, 0.0);
+        camera.position = glm::vec3(0.0, 25.0, 50.5);
+        camera.lookAt = camera.position + glm::vec3(0.0, 0.0, -camera.position.z - 5.0);
         camera.up = glm::vec3(0.0, 1.0, 0.0);
     }
 
@@ -142,14 +142,13 @@ void Scene::convertMats(const aiScene* scene)
         // Blinn-Phong shininess (many non-PBR formats)
         float shininess = 0.0f;
         if (AI_SUCCESS == aim->Get(AI_MATKEY_SHININESS, shininess)) {
+            m.specular.color = glm::vec3(kd.r, kd.g, kd.b);
             m.specular.exponent = shininess;
             m.hasSpecular = shininess > 0.0f;
         }
 
         materials.push_back(m);
     }
-
-
 }
 
 void Scene::nodeDFS(const aiNode* node, const glm::mat4& parentTransform, const aiScene* scene, unordered_map<string, glm::mat4>& map)

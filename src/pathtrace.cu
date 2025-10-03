@@ -284,6 +284,7 @@ __global__ void computeIntersections(
             if (nodes[i].numGeoms > 0)
             {
                 intersectGeoms(geoms, geoms_size, pathSegments, path_index, nodes[i].startGeom, nodes[i].numGeoms, t_min, hit_geom_index, intersect_point, normal);
+                continue;
             }
 
             stack[sp++] = nodes[i].right;
@@ -432,7 +433,7 @@ void pathtrace(uchar4* pbo, int iter)
         cudaDeviceSynchronize();
 
 #ifdef MAT_SORT
-        materialSort(num_paths);
+        //materialSort(num_paths);
 #endif
 
         // shade intersections
