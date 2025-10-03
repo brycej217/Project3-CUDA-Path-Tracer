@@ -9,14 +9,29 @@
 
 #include <fstream>
 #include <iostream>
-#include <string>
-#include <unordered_map>
+#include <vector>
 #include <random>
+#include <string>
+#include <cassert>
+
+#define WIDTH 800
+#define HEIGHT 800
 
 using namespace std;
 using json = nlohmann::json;
 
 static int nodesUsed = 1;
+
+static glm::mat4 convertAIMatrix(const aiMatrix4x4& m)
+{
+    glm::mat4 mat = glm::mat4(
+        m.a1, m.b1, m.c1, m.d1,
+        m.a2, m.b2, m.c2, m.d2,
+        m.a3, m.b3, m.c3, m.d3,
+        m.a4, m.b4, m.c4, m.d4
+    );
+    return mat;
+}
 
 AABB surroundingBox(AABB a, AABB b)
 {
@@ -38,10 +53,266 @@ Scene::Scene(string filename)
     }
     else
     {
-        cout << "Couldn't read from " << filename << endl;
-        exit(-1);
+        loadAssimp(filename);
+    }
+
+
+}
+
+void Scene::initCamera(const aiScene* scene)
+{
+    Camera& camera = state.camera;
+    RenderState& state = this->state;
+    
+    camera.resolution.x = WIDTH;
+    camera.resolution.y = HEIGHT;
+    float fovy;
+    state.iterations = 5000;
+    state.traceDepth = 8;
+    state.imageName = scene->mName.C_Str();
+
+    if (scene->mCameras)
+    {
+        aiCamera* aiCam = scene->mCameras[0];
+
+        float aspect = aiCam->mAspect;
+        fovy = 2.0f * atan(tan(aiCam->mHorizontalFOV * 0.5f) / aspect);
+        const auto& pos = aiCam->mPosition;
+        const auto& lookat = aiCam->mLookAt;
+        const auto& up = aiCam->mUp;
+        camera.position = glm::vec3(pos[0], pos[1], pos[2]);
+        camera.lookAt = glm::vec3(lookat[0], lookat[1], lookat[2]);
+        camera.up = glm::vec3(up[0], up[1], up[2]);
+    }
+    else
+    {
+        fovy = 45.0;
+        camera.position = glm::vec3(0.0, -10.0, 50.5);
+        camera.lookAt = glm::vec3(0.0, 5.0, 0.0);
+        camera.up = glm::vec3(0.0, 1.0, 0.0);
+    }
+
+    //calculate fov based on resolution
+    float yscaled = tan(fovy * (PI / 180));
+    float xscaled = (yscaled * camera.resolution.x) / camera.resolution.y;
+    float fovx = (atan(xscaled) * 180) / PI;
+    camera.fov = glm::vec2(fovx, fovy);
+
+    camera.right = glm::normalize(glm::cross(camera.view, camera.up));
+    camera.pixelLength = glm::vec2(2 * xscaled / (float)camera.resolution.x,
+        2 * yscaled / (float)camera.resolution.y);
+
+    camera.view = glm::normalize(camera.lookAt - camera.position);
+
+    //set up render camera stuff
+    int arraylen = camera.resolution.x * camera.resolution.y;
+    state.image.resize(arraylen);
+    std::fill(state.image.begin(), state.image.end(), glm::vec3());
+}
+
+void Scene::convertMats(const aiScene* scene)
+{
+
+    for (int i = 0; i < scene->mNumMaterials; i++)
+    {
+        const aiMaterial* aim = scene->mMaterials[i];
+
+        Material m;
+
+        // diffuse
+        aiColor3D kd(1.f, 1.f, 1.f);
+        if (AI_SUCCESS == aim->Get(AI_MATKEY_COLOR_DIFFUSE, kd)) 
+        {
+            m.color = glm::vec3(kd.r, kd.g, kd.b);
+        }
+
+        // emissive
+        aiColor3D ke(0.f, 0.f, 0.f);
+        if (AI_SUCCESS == aim->Get(AI_MATKEY_COLOR_EMISSIVE, ke)) {
+            m.emissive = glm::vec3(ke.r, ke.g, ke.b);
+        }
+        m.emittance = glm::length(m.emissive);
+
+        float roughness = 0.5f, metallic = 0.0f;
+        aim->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughness);
+        aim->Get(AI_MATKEY_METALLIC_FACTOR, metallic);
+        m.roughness = roughness;
+        m.metallic = metallic;
+
+        // Blinn-Phong shininess (many non-PBR formats)
+        float shininess = 0.0f;
+        if (AI_SUCCESS == aim->Get(AI_MATKEY_SHININESS, shininess)) {
+            m.specular.exponent = shininess;
+            m.hasSpecular = shininess > 0.0f;
+        }
+
+        materials.push_back(m);
+    }
+
+
+}
+
+void Scene::nodeDFS(const aiNode* node, const glm::mat4& parentTransform, const aiScene* scene, unordered_map<string, glm::mat4>& map)
+{
+    glm::mat4 local = convertAIMatrix(node->mTransformation);
+    glm::mat4 world = parentTransform * local;
+
+
+    for (int i = 0; i < node->mNumMeshes; i++)
+    {
+        int idx = node->mMeshes[i];
+        std::string name = scene->mMeshes[idx]->mName.C_Str();
+        map[name] = world;
+    }
+
+    for (int i = 0; i < node->mNumChildren; i++)
+    {
+        nodeDFS(node->mChildren[i], world, scene, map);
     }
 }
+
+void Scene::loadAssimp(const std::string& path)
+{
+    Assimp::Importer importer;
+    const aiScene* scene = importer.ReadFile(path,
+        aiProcess_Triangulate |
+        aiProcess_GlobalScale |
+        aiProcess_GenSmoothNormals |
+        aiProcess_FlipUVs |
+        aiProcess_JoinIdenticalVertices);
+
+    cout << path << endl;
+
+    if (!scene) {
+        std::cerr << "Assimp error: " << importer.GetErrorString() << std::endl;
+        throw std::runtime_error("failed to load scene");
+    }
+
+    convertMats(scene); // convert ai mats to our custom mat structs
+
+    unordered_map<string, glm::mat4> nodeTransforms; // get node transforms for global coordinates
+
+    nodeDFS(scene->mRootNode, glm::mat4(1.0f), scene, nodeTransforms);
+
+    for (unsigned int i = 0; i < scene->mNumMeshes; i++)
+    {
+        const aiMesh* currMesh = scene->mMeshes[i];
+        glm::mat4 transform = nodeTransforms[currMesh->mName.C_Str()];
+
+        const int baseVertex = static_cast<int>(vertices.size());
+        const int matId = currMesh->mMaterialIndex;
+
+        // find vertices
+        for (unsigned int j = 0; j < currMesh->mNumVertices; j++)
+        {
+            Vertex vertex;
+            vertex.position = glm::vec3(transform * glm::vec4(currMesh->mVertices[j].x, currMesh->mVertices[j].y, currMesh->mVertices[j].z, 1.0f));
+            vertex.normal = currMesh->HasNormals() ? glm::vec3(glm::transpose(glm::inverse(transform)) * glm::vec4(currMesh->mNormals[j].x, currMesh->mNormals[j].y, currMesh->mNormals[j].z, 0.0f)) : glm::vec3(0.0f);
+            vertex.texCoord = currMesh->HasTextureCoords(0) ? glm::vec2(currMesh->mTextureCoords[0][j].x, currMesh->mTextureCoords[0][j].y) : glm::vec2(0.0f);
+
+            vertices.push_back(vertex);
+        }
+
+        for (unsigned int j = 0; j < currMesh->mNumFaces; j++)
+        {
+            const aiFace* face = &currMesh->mFaces[j];
+
+            Triangle tri;
+            for (unsigned int k = 0; k < face->mNumIndices; k++)
+            {
+                tri.vertices[k] = vertices[baseVertex + face->mIndices[k]];
+            }
+            tri.materialId = matId;
+            triangles.push_back(tri);
+        }
+    }
+
+    // BUILD ACCELERATION STRCTURES
+    nodes.resize(triangles.size() * 2 - 1);
+    nodes[0].left = nodes[0].right = -1;
+    nodes[0].startGeom = 0;
+    nodes[0].numGeoms = triangles.size();
+    updateNodeAABB(0);
+    subdivide(0);
+
+    num_nodes = nodesUsed;
+
+    // CAMERA
+    initCamera(scene);
+}
+
+void Scene::updateNodeAABB(int index)
+{
+    BVHNode& node = nodes[index];
+    node.aabb.min = glm::vec3(1e30f);
+    node.aabb.max = glm::vec3(-1e30f);
+
+    for (int i = node.startGeom; i < node.startGeom + node.numGeoms; i++)
+    {
+        node.aabb = surroundingBox(node.aabb, triangles[i].getAABB());
+    }
+}
+
+static int axis;
+int comp(const void* a, const void* b)
+{
+    const Triangle* at = static_cast<const Triangle*>(a);
+    const Triangle* bt = static_cast<const Triangle*>(b);
+
+    float ca = at->getCenter()[axis];
+    float cb = bt->getCenter()[axis];
+    
+    if (ca < cb) return -1;
+    if (ca > cb) return 1;
+    return 0;
+}
+
+void Scene::subdivide(int index)
+{
+    BVHNode& node = nodes[index];
+
+    if (node.numGeoms <= 2)
+    {
+        node.left = node.right = -1;
+        return;
+    }
+    // determine split axis
+    glm::vec3 extent = node.aabb.max - node.aabb.min;
+    axis = 0;
+    if (extent.y > extent.x) axis = 1;
+    if (extent.z > extent[axis]) axis = 2;
+
+    qsort(&triangles[nodes[index].startGeom], nodes[index].numGeoms, sizeof(Triangle), comp); // sort by axis
+
+    int left = nodesUsed++;
+    int right = nodesUsed++;
+
+    assert(left != index && right != index);
+    assert(right < (int)nodes.size());
+
+    node.left = left;
+    node.right = right;
+
+    nodes[left].startGeom = nodes[index].startGeom;
+    nodes[left].numGeoms = nodes[index].numGeoms / 2;
+
+    nodes[right].startGeom = nodes[index].startGeom + nodes[index].numGeoms / 2;
+    nodes[right].numGeoms = nodes[index].numGeoms - (nodes[index].numGeoms / 2);
+
+    nodes[left].left = nodes[left].right = -1;
+    nodes[right].left = nodes[right].right = -1;
+
+    updateNodeAABB(left);
+    updateNodeAABB(right);
+    subdivide(left);
+    subdivide(right);
+
+    nodes[index].numGeoms = 0;
+}
+
+
+
+///// LEGACY JSON IMPORTING //////
 
 void Scene::loadFromJSON(const std::string& jsonName)
 {
@@ -147,19 +418,16 @@ void Scene::loadFromJSON(const std::string& jsonName)
 
     // BUILD ACCELERATION STRCTURES
     nodes.resize(geoms.size() * 2 - 1);
-    buildBVH(0);
+    nodes[0].left = nodes[0].right = -1;
+    nodes[0].startGeom = 0;
+    nodes[0].numGeoms = geoms.size();
+    JSONUpdateNodeAABB(0);
+    JSONSubdivide(0);
 }
 
-void Scene::buildBVH(int index)
-{
-    nodes[index].left = nodes[index].right = -1;
-    nodes[index].startGeom = 0;
-    nodes[index].numGeoms = geoms.size();
-    updateNodeAABB(index);
-    subdivide(index);
-}
+// JSON
 
-void Scene::updateNodeAABB(int index)
+void Scene::JSONUpdateNodeAABB(int index)
 {
     BVHNode& node = nodes[index];
     node.aabb.min = glm::vec3(1e30f);
@@ -171,7 +439,7 @@ void Scene::updateNodeAABB(int index)
     }
 }
 
-void Scene::subdivide(int index)
+void Scene::JSONSubdivide(int index)
 {
     BVHNode& node = nodes[index];
 
@@ -220,8 +488,8 @@ void Scene::subdivide(int index)
     nodes[index].left = left;
     nodes[index].right = right;
     nodes[index].numGeoms = 0;
-    updateNodeAABB(left);
-    updateNodeAABB(right);
-    subdivide(left);
-    subdivide(right);
+    JSONUpdateNodeAABB(left);
+    JSONUpdateNodeAABB(right);
+    JSONSubdivide(left);
+    JSONSubdivide(right);
 }

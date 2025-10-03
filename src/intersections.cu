@@ -110,6 +110,34 @@ __host__ __device__ float sphereIntersectionTest(
     return glm::length(r.origin - intersectionPoint);
 }
 
+__host__ __device__ float triangleIntersectionTest(Triangle tri,
+    Ray r,
+    glm::vec3& intersectionPoint,
+    glm::vec3& normal,
+    bool& outside)
+{
+    glm::vec3 bary;
+    bool intersect;
+    float t;
+    intersect = glm::intersectRayTriangle(r.origin, r.direction, tri.vertices[0].position, tri.vertices[1].position, tri.vertices[2].position, bary);
+
+    if (intersect)
+    {
+        float w = 1 - bary.x - bary.y;
+        intersectionPoint = bary.x * tri.vertices[0].position + bary.y * tri.vertices[1].position + w * tri.vertices[2].position;
+        normal = bary.x * tri.vertices[0].normal + bary.y * tri.vertices[1].normal + w * tri.vertices[2].normal;
+
+        t = bary.z;
+    }
+    else
+    {
+        t = -1;
+    }
+    return t;
+
+    return 0;
+}
+
 __host__ __device__ void boxAABB(Geom& box)
 {
     glm::vec3 min(1e30f);

@@ -72,6 +72,13 @@ __host__ __device__ float sphereIntersectionTest(
     glm::vec3& normal,
     bool& outside);
 
+__host__ __device__ float triangleIntersectionTest(
+    Triangle tri,
+    Ray r,
+    glm::vec3& intersectionPoint,
+    glm::vec3& normal,
+    bool& outside);
+
 __host__ __device__ void boxAABB(Geom& box);
 
 __host__ __device__ void sphereAABB(Geom& sphere);

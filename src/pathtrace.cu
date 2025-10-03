@@ -84,15 +84,18 @@ static Scene* hst_scene = NULL;
 static GuiDataContainer* guiData = NULL;
 static glm::vec3* dev_image = NULL;
 static Geom* dev_geoms = NULL;
-static BVHNode* dev_nodes = NULL;
 static Material* dev_materials = NULL;
 static PathSegment* dev_paths = NULL;
+
 static ShadeableIntersection* dev_intersections = NULL;
+// TODO: static variables for device memory, any extra info you need, etc
+// ...
+
+static BVHNode* dev_nodes = NULL;
+static Triangle* dev_tris = NULL;
 static int* dev_keys1 = NULL;
 static int* dev_keys2 = NULL;
 static thrust::device_ptr<PathSegment> thrust_paths;
-// TODO: static variables for device memory, any extra info you need, etc
-// ...
 
 void InitDataContainer(GuiDataContainer* imGuiData)
 {
@@ -120,15 +123,22 @@ void pathtraceInit(Scene* scene)
     cudaMalloc(&dev_intersections, pixelcount * sizeof(ShadeableIntersection));
     cudaMemset(dev_intersections, 0, pixelcount * sizeof(ShadeableIntersection));
 
+    // TODO: initialize any extra device memeory you need
+
+    // MAT SORT
+
     cudaMalloc(&dev_keys1, pixelcount * sizeof(int));
     cudaMalloc(&dev_keys2, pixelcount * sizeof(int));
-    // TODO: initialize any extra device memeory you need
     thrust_paths = thrust::device_pointer_cast(dev_paths);
 
     // BVH Nodes
 
     cudaMalloc(&dev_nodes, scene->nodes.size() * sizeof(BVHNode));
     cudaMemcpy(dev_nodes, scene->nodes.data(), scene->nodes.size() * sizeof(BVHNode), cudaMemcpyHostToDevice);
+
+    // Triangles
+    cudaMalloc(&dev_tris, scene->triangles.size() * sizeof(Triangle));
+    cudaMemcpy(dev_tris, scene->triangles.data(), scene->triangles.size() * sizeof(Triangle), cudaMemcpyHostToDevice);
 
     checkCUDAError("pathtraceInit");
 }
@@ -144,6 +154,8 @@ void pathtraceFree()
     cudaFree(dev_nodes);
     cudaFree(dev_keys1);
     cudaFree(dev_keys2);
+
+    cudaFree(dev_tris);
 
     checkCUDAError("pathtraceFree");
 }
@@ -170,6 +182,7 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
         // set default payload values
         segment.radiance = vec3(0.0f);
         segment.throughput = vec3(1.0f);
+        segment.compact = false;
 
         // get noise values
         thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, pathSegments[index].remainingBounces);
@@ -189,7 +202,7 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
 }
 
 
-__host__ __device__ float intersectGeoms(Geom* geoms, PathSegment& pathSegment, int start, int end, float& t_min, int& hit_geom_index, glm::vec3& intersect_point, glm::vec3& normal)
+__host__ __device__ float intersectGeoms(Triangle* geoms, int num_geoms, PathSegment* paths, int pathId, int start, int end, float& t_min, int& hit_geom_index, glm::vec3& intersect_point, glm::vec3& normal)
 {
     float t;
     bool outside = true;
@@ -199,20 +212,10 @@ __host__ __device__ float intersectGeoms(Geom* geoms, PathSegment& pathSegment, 
 
     for (int i = start; i < start + end; i++)
     {
-        Geom& geom = geoms[i];
+        Triangle& geom = geoms[i];
 
-        if (geom.type == CUBE)
-        {
-            t = boxIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, outside);
-        }
-        else if (geom.type == SPHERE)
-        {
-            t = sphereIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, outside);
-        }
-        // TODO: add more intersection tests here... triangle? metaball? CSG?
+        t = triangleIntersectionTest(geom, paths[pathId].ray, tmp_intersect, tmp_normal, outside);
 
-        // Compute the minimum t from the intersection tests to determine what
-        // scene geometry object was hit first.
         if (t > 0.0f && t_min > t)
         {
             t_min = t;
@@ -222,6 +225,22 @@ __host__ __device__ float intersectGeoms(Geom* geoms, PathSegment& pathSegment, 
         }
     }
     return t_min;
+}
+
+__host__ __device__ void dfs(BVHNode* nodes, int num_nodes, PathSegment* paths, Triangle* geoms, int num_geoms, int nodeId, int pathId, float& t_min, int& hit_geom_index, glm::vec3& intersect_point, glm::vec3& normal)
+{
+    if (nodeId < 0 || nodeId >= num_nodes) return;
+    /*
+    if (!nodes[nodeId].aabb.hit(paths[pathId].ray)) return;
+    
+    if (nodes[nodeId].numGeoms > 0)
+    {
+        intersectGeoms(geoms, num_geoms, paths, pathId, nodes[nodeId].startGeom, nodes[nodeId].numGeoms, t_min, hit_geom_index, intersect_point, normal);
+        return;
+    }*/
+
+    dfs(nodes, num_nodes, paths, geoms, num_geoms, nodes[nodeId].left, pathId, t_min, hit_geom_index, intersect_point, normal);
+    //dfs(nodes, num_nodes, paths, geoms, num_geoms, nodes[nodeId].right, pathId, t_min, hit_geom_index, intersect_point, normal);
 }
 
 // TODO:
@@ -234,7 +253,7 @@ __global__ void computeIntersections(
     PathSegment* pathSegments,
     BVHNode* nodes,
     int num_nodes,
-    Geom* geoms,
+    Triangle* geoms,
     int geoms_size,
     ShadeableIntersection* intersections,
     int* keys1,
@@ -244,8 +263,6 @@ __global__ void computeIntersections(
 
     if (path_index < num_paths)
     {
-        PathSegment& pathSegment = pathSegments[path_index];
-
         float t;
         glm::vec3 intersect_point;
         glm::vec3 normal;
@@ -262,11 +279,11 @@ __global__ void computeIntersections(
         {
             int i = stack[--sp];
 
-            if (i < 0 || !nodes[i].aabb.hit(pathSegment.ray)) continue;
+            if (i < 0 || !nodes[i].aabb.hit(pathSegments[path_index].ray)) continue;
 
             if (nodes[i].numGeoms > 0)
             {
-                intersectGeoms(geoms, pathSegment, nodes[i].startGeom, nodes[i].numGeoms, t_min, hit_geom_index, intersect_point, normal);
+                intersectGeoms(geoms, geoms_size, pathSegments, path_index, nodes[i].startGeom, nodes[i].numGeoms, t_min, hit_geom_index, intersect_point, normal);
             }
 
             stack[sp++] = nodes[i].right;
@@ -281,13 +298,11 @@ __global__ void computeIntersections(
         {
             // The ray hits something
             intersections[path_index].t = t_min;
-            intersections[path_index].materialId = geoms[hit_geom_index].materialid;
-            keys1[path_index] = geoms[hit_geom_index].materialid;
-            keys2[path_index] = geoms[hit_geom_index].materialid;
+            intersections[path_index].materialId = geoms[hit_geom_index].materialId;
+            keys1[path_index] = geoms[hit_geom_index].materialId;
+            keys2[path_index] = geoms[hit_geom_index].materialId;
             intersections[path_index].surfaceNormal = normal;
         }
-
-        pathSegments[path_index].t = intersections[path_index].t;
     }
 }
 
@@ -302,7 +317,7 @@ __global__ void shadeIntersection(
     if (idx < num_paths)
     {
         ShadeableIntersection intersection = shadeableIntersections[idx];
-        if (intersection.t > 0.0f)
+        if (intersection.t > 0.0f) // if we have an intersection
         {
             thrust::default_random_engine rng = makeSeededRandomEngine(iter, idx, pathSegments[idx].remainingBounces);
             thrust::uniform_real_distribution<float> u01(0, 1);
@@ -316,6 +331,7 @@ __global__ void shadeIntersection(
             else
             {
                 pathSegments[idx].radiance = vec3(0.0f);
+                
                 Sample sample = sampleBSDF(pathSegments[idx], intersection, material, rng);
 
                 pathSegments[idx].throughput *= sample.lo;
@@ -325,9 +341,10 @@ __global__ void shadeIntersection(
                 pathSegments[idx].remainingBounces--;
             }
         }
-        else
+        else // if not set throughput to 0
         {
             pathSegments[idx].throughput = vec3(0.0f);
+            pathSegments[idx].compact = true;
         }
     }
 }
@@ -348,7 +365,7 @@ struct earlyTerm
 {
     __host__ __device__ bool operator()(PathSegment path) const
     {
-        return path.remainingBounces <= 0 || path.t < 0.0f;
+        return path.remainingBounces < 0 || path.compact;
     }
 };
 
@@ -374,6 +391,7 @@ void materialSort(int num_paths)
 
 void pathtrace(uchar4* pbo, int iter)
 {
+    // trace setup
     const int traceDepth = hst_scene->state.traceDepth;
     const Camera& cam = hst_scene->state.camera;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
@@ -385,6 +403,7 @@ void pathtrace(uchar4* pbo, int iter)
 
     const int blockSize1d = 128;
 
+    // generate rays
     generateRayFromCamera << <blocksPerGrid2d, blockSize2d >> > (cam, iter, traceDepth, dev_paths);
     checkCUDAError("generate camera ray");
 
@@ -402,9 +421,9 @@ void pathtrace(uchar4* pbo, int iter)
             num_paths,
             dev_paths,
             dev_nodes,
-            hst_scene->nodes.size(),
-            dev_geoms,
-            hst_scene->geoms.size(),
+            hst_scene->num_nodes,
+            dev_tris,
+            hst_scene->triangles.size(),
             dev_intersections,
             dev_keys1,
             dev_keys2

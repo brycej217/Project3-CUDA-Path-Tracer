@@ -3,21 +3,39 @@
 #include "sceneStructs.h"
 #include <vector>
 
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
+#include <unordered_map>
+
 class Scene
 {
 private:
     void loadFromJSON(const std::string& jsonName);
 
-    void buildBVH(int index);
+    void initCamera(const aiScene* scene);
+
+    void convertMats(const aiScene* scene);
+
+    void loadAssimp(const std::string& path);
+
+    void nodeDFS(const aiNode* node, const glm::mat4& parentTransform, const aiScene* scene, std::unordered_map<std::string, glm::mat4>& map);
 
     void updateNodeAABB(int index);
 
     void subdivide(int index);
+
+    void JSONUpdateNodeAABB(int index);
+
+    void JSONSubdivide(int index);
 public:
     Scene(std::string filename);
 
     std::vector<Geom> geoms;
     std::vector<BVHNode> nodes;
     std::vector<Material> materials;
+    std::vector<Triangle> triangles;
+    std::vector<Vertex> vertices;
     RenderState state;
+    int num_nodes;
 };

@@ -1,6 +1,23 @@
 cmake_minimum_required(VERSION 3.24)
 project(cis565_path_tracer LANGUAGES CUDA CXX)
 
+# ASSIMP LOADING START
+include(FetchContent)
+
+set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_NO_EXPORT ON CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+
+FetchContent_Declare(
+  assimp
+  GIT_REPOSITORY https://github.com/assimp/assimp.git
+  GIT_TAG v5.4.3
+)
+FetchContent_MakeAvailable(assimp)
+
+# ASSIMP LOADING END
+
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
@@ -107,10 +124,12 @@ source_group("ImGui\\Sources" FILES ${imgui_sources})
 #add_subdirectory(stream_compaction)  # TODO: uncomment if using your stream compaction
 
 add_executable(${CMAKE_PROJECT_NAME} ${sources} ${headers} ${imgui_sources} ${imgui_headers})
+
 target_link_libraries(${CMAKE_PROJECT_NAME}
     ${GL_LIBRARIES}
-    #stream_compaction  # TODO: uncomment if using your stream compaction
+    assimp::assimp
 )
+
 set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES CUDA_ARCHITECTURES native)
 

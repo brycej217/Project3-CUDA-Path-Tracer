@@ -56,6 +56,32 @@ struct AABB
     }
 };
 
+struct Vertex
+{
+    glm::vec3 position;
+    glm::vec3 normal;
+    glm::vec2 texCoord;
+};
+
+struct Triangle
+{
+    Vertex vertices[3];
+    int materialId;
+
+    AABB getAABB()
+    {
+        AABB aabb;
+        aabb.min = glm::min(glm::min(vertices[0].position, vertices[1].position), vertices[2].position);
+        aabb.max = glm::max(glm::max(vertices[0].position, vertices[1].position), vertices[2].position);
+        return aabb;
+    }
+
+    glm::vec3 getCenter() const
+    {
+        return (vertices[0].position + vertices[1].position + vertices[2].position) / 3.0f;
+    }
+};
+
 struct Geom
 {
     AABB aabb;
@@ -87,6 +113,9 @@ struct BVHNode
 struct Material
 {
     glm::vec3 color;
+    glm::vec3 emissive;
+    float roughness;
+    float metallic;
     struct
     {
         float exponent;
@@ -127,7 +156,7 @@ struct PathSegment
     glm::vec3 throughput;
     int pixelIndex;
     int remainingBounces;
-    float t;
+    bool compact;
 };
 
 struct Sample

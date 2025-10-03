@@ -78,6 +78,7 @@ __host__ __device__ Sample calculateDiffuse(
     vec3 intersect = pathSegment.ray.origin + pathSegment.ray.direction * intersection.t;
     sample.wi.origin = intersect + intersection.surfaceNormal * EPSILON;
     sample.wi.direction = calculateRandomDirectionInHemisphere(intersection.surfaceNormal, rng);
+
     sample.lo = m.color; // attenuate color (perfectly diffuse surface scatter light equally in all directions so amount of potential light coming towards wo is constant)
 
     return sample;
