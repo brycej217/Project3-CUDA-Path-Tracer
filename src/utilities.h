@@ -15,6 +15,12 @@
 #define SQRT_OF_ONE_THIRD 0.5773502691896257645091487805019574556476f
 #define EPSILON           0.00001f
 
+#define CUDA_CHECK(err) \
+    if (err != cudaSuccess) { \
+        fprintf(stderr, "CUDA error: %s at %s:%d\n", cudaGetErrorString(err), __FILE__, __LINE__); \
+        exit(EXIT_FAILURE); \
+    }
+
 class GuiDataContainer
 {
 public:

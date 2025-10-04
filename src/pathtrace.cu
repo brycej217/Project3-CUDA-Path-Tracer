@@ -90,7 +90,7 @@ static PathSegment* dev_paths = NULL;
 static ShadeableIntersection* dev_intersections = NULL;
 // TODO: static variables for device memory, any extra info you need, etc
 // ...
-
+static cudaTextureObject_t* dev_tex = NULL;
 static BVHNode* dev_nodes = NULL;
 static Triangle* dev_tris = NULL;
 static int* dev_keys1 = NULL;
@@ -140,6 +140,10 @@ void pathtraceInit(Scene* scene)
     cudaMalloc(&dev_tris, scene->triangles.size() * sizeof(Triangle));
     cudaMemcpy(dev_tris, scene->triangles.data(), scene->triangles.size() * sizeof(Triangle), cudaMemcpyHostToDevice);
 
+    // Textures
+    cudaMalloc(&dev_tex, scene->textures.size() * sizeof(cudaTextureObject_t));
+    cudaMemcpy(dev_tex, scene->textures.data(), scene->textures.size() * sizeof(cudaTextureObject_t), cudaMemcpyHostToDevice);
+
     checkCUDAError("pathtraceInit");
 }
 
@@ -156,7 +160,7 @@ void pathtraceFree()
     cudaFree(dev_keys2);
 
     cudaFree(dev_tris);
-
+    cudaFree(dev_tex);
     checkCUDAError("pathtraceFree");
 }
 
@@ -202,19 +206,20 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
 }
 
 
-__host__ __device__ float intersectGeoms(Triangle* geoms, int num_geoms, PathSegment* paths, int pathId, int start, int end, float& t_min, int& hit_geom_index, glm::vec3& intersect_point, glm::vec3& normal)
+__host__ __device__ float intersectGeoms(Triangle* geoms, int num_geoms, PathSegment* paths, int pathId, int start, int end, float& t_min, int& hit_geom_index, glm::vec3& intersect_point, glm::vec3& normal, glm::vec2& uv)
 {
     float t;
     bool outside = true;
 
     glm::vec3 tmp_intersect;
     glm::vec3 tmp_normal;
+    glm::vec2 tmp_uv;
 
     for (int i = start; i < start + end; i++)
     {
         Triangle& geom = geoms[i];
 
-        t = triangleIntersectionTest(geom, paths[pathId].ray, tmp_intersect, tmp_normal, outside);
+        t = triangleIntersectionTest(geom, paths[pathId].ray, tmp_intersect, tmp_normal, outside, tmp_uv);
 
         if (t > 0.0f && t_min > t)
         {
@@ -222,25 +227,10 @@ __host__ __device__ float intersectGeoms(Triangle* geoms, int num_geoms, PathSeg
             hit_geom_index = i;
             intersect_point = tmp_intersect;
             normal = tmp_normal;
+            uv = tmp_uv;
         }
     }
     return t_min;
-}
-
-__host__ __device__ void dfs(BVHNode* nodes, int num_nodes, PathSegment* paths, Triangle* geoms, int num_geoms, int nodeId, int pathId, float& t_min, int& hit_geom_index, glm::vec3& intersect_point, glm::vec3& normal)
-{
-    if (nodeId < 0 || nodeId >= num_nodes) return;
-    /*
-    if (!nodes[nodeId].aabb.hit(paths[pathId].ray)) return;
-    
-    if (nodes[nodeId].numGeoms > 0)
-    {
-        intersectGeoms(geoms, num_geoms, paths, pathId, nodes[nodeId].startGeom, nodes[nodeId].numGeoms, t_min, hit_geom_index, intersect_point, normal);
-        return;
-    }*/
-
-    dfs(nodes, num_nodes, paths, geoms, num_geoms, nodes[nodeId].left, pathId, t_min, hit_geom_index, intersect_point, normal);
-    //dfs(nodes, num_nodes, paths, geoms, num_geoms, nodes[nodeId].right, pathId, t_min, hit_geom_index, intersect_point, normal);
 }
 
 // TODO:
@@ -266,6 +256,7 @@ __global__ void computeIntersections(
         float t;
         glm::vec3 intersect_point;
         glm::vec3 normal;
+        glm::vec2 uv;
         float t_min = FLT_MAX;
         int hit_geom_index = -1;
         bool outside = true;
@@ -283,7 +274,7 @@ __global__ void computeIntersections(
 
             if (nodes[i].numGeoms > 0)
             {
-                intersectGeoms(geoms, geoms_size, pathSegments, path_index, nodes[i].startGeom, nodes[i].numGeoms, t_min, hit_geom_index, intersect_point, normal);
+                intersectGeoms(geoms, geoms_size, pathSegments, path_index, nodes[i].startGeom, nodes[i].numGeoms, t_min, hit_geom_index, intersect_point, normal, uv);
                 continue;
             }
 
@@ -300,9 +291,11 @@ __global__ void computeIntersections(
             // The ray hits something
             intersections[path_index].t = t_min;
             intersections[path_index].materialId = geoms[hit_geom_index].materialId;
+            intersections[path_index].surfaceNormal = normal;
+            intersections[path_index].uv = uv;
+
             keys1[path_index] = geoms[hit_geom_index].materialId;
             keys2[path_index] = geoms[hit_geom_index].materialId;
-            intersections[path_index].surfaceNormal = normal;
         }
     }
 }
@@ -312,7 +305,8 @@ __global__ void shadeIntersection(
     int num_paths,
     ShadeableIntersection* shadeableIntersections,
     PathSegment* pathSegments,
-    Material* materials)
+    Material* materials,
+    cudaTextureObject_t* textures)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < num_paths)
@@ -333,7 +327,7 @@ __global__ void shadeIntersection(
             {
                 pathSegments[idx].radiance = vec3(0.0f);
                 
-                Sample sample = sampleBSDF(pathSegments[idx], intersection, material, rng);
+                Sample sample = sampleBSDF(pathSegments[idx], intersection, material, rng, textures);
 
                 pathSegments[idx].throughput *= sample.lo;
 
@@ -442,7 +436,8 @@ void pathtrace(uchar4* pbo, int iter)
             num_paths,
             dev_intersections,
             dev_paths,
-            dev_materials
+            dev_materials,
+            dev_tex
             );
 
         // stream compaction

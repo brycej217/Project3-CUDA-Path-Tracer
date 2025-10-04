@@ -126,6 +126,9 @@ struct Material
     float hasRefractive;
     float indexOfRefraction;
     float emittance;
+
+    int diffTexId = -1;
+    int normTexId = -1;
 };
 
 struct Camera
@@ -173,4 +176,5 @@ struct ShadeableIntersection
   float t;
   glm::vec3 surfaceNormal;
   int materialId;
+  glm::vec2 uv;
 };

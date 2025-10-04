@@ -1,7 +1,6 @@
 #pragma once
 
 #include "sceneStructs.h"
-
 #include <glm/glm.hpp>
 
 #include <thrust/random.h>
@@ -11,7 +10,7 @@
  * Computes a cosine-weighted random direction in a hemisphere.
  * Used for diffuse lighting.
  */
-__host__ __device__ glm::vec3 calculateRandomDirectionInHemisphere(
+__device__ glm::vec3 calculateRandomDirectionInHemisphere(
     glm::vec3 normal, 
     thrust::default_random_engine& rng);
 
@@ -40,8 +39,9 @@ __host__ __device__ glm::vec3 calculateRandomDirectionInHemisphere(
  *
  * You may need to change the parameter list for your purposes!
  */
-__host__ __device__ Sample sampleBSDF(
+__device__ Sample sampleBSDF(
     PathSegment& pathSegment,
     ShadeableIntersection& intersection,
     const Material& m,
-    thrust::default_random_engine& rng);
+    thrust::default_random_engine& rng,
+    cudaTextureObject_t* textures);

@@ -86,13 +86,47 @@ __host__ __device__ Sample calculateDiffuse(
     return sample;
 }
 
-__host__ __device__ Sample sampleBSDF(
+__device__ Sample calculateTexture(
+    PathSegment& pathSegment,
+    ShadeableIntersection& intersection,
+    const Material& m,
+    thrust::default_random_engine& rng,
+    cudaTextureObject_t* textures)
+{
+    Sample sample;
+    vec2 uv = intersection.uv;
+
+    vec3 normal = intersection.surfaceNormal;
+
+    if (m.normTexId >= 0)
+    {
+        float4 n = tex2D<float4>(textures[m.normTexId], uv.x, uv.y);
+        vec3 normal = vec3(n.x, n.y, n.z);
+    }
+
+    vec3 intersect = pathSegment.ray.origin + pathSegment.ray.direction * intersection.t;
+    sample.wi.origin = intersect + normal * EPSILON;
+    sample.wi.direction = calculateRandomDirectionInHemisphere(normal, rng);
+
+    float4 c = tex2D<float4>(textures[m.diffTexId], uv.x, uv.y);
+    sample.lo = vec3(c.x, c.y, c.z);
+
+    return sample;
+}
+
+__device__ Sample sampleBSDF(
     PathSegment& pathSegment,
     ShadeableIntersection& intersection,
     const Material &m,
-    thrust::default_random_engine &rng)
+    thrust::default_random_engine &rng,
+    cudaTextureObject_t* textures)
 {
     // diffuse
+    if (m.diffTexId >= 0)
+    {
+        return calculateTexture(pathSegment, intersection, m, rng, textures);
+    }
+
     if (m.hasSpecular)
     {
         return calculateSpecular(pathSegment, intersection, m, rng);

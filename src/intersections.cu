@@ -114,7 +114,8 @@ __host__ __device__ float triangleIntersectionTest(Triangle tri,
     Ray r,
     glm::vec3& intersectionPoint,
     glm::vec3& normal,
-    bool& outside)
+    bool& outside,
+    glm::vec2& uv)
 {
     glm::vec3 bary;
     bool intersect;
@@ -126,6 +127,7 @@ __host__ __device__ float triangleIntersectionTest(Triangle tri,
         float w = 1 - bary.x - bary.y;
         intersectionPoint = w * tri.vertices[0].position + bary.x * tri.vertices[1].position + bary.y * tri.vertices[2].position;
         normal = glm::normalize(w * tri.vertices[0].normal + bary.x * tri.vertices[1].normal + bary.y * tri.vertices[2].normal);
+        uv = w * tri.vertices[0].texCoord + bary.x * tri.vertices[1].texCoord + bary.y * tri.vertices[2].texCoord;
 
         t = bary.z;
     }

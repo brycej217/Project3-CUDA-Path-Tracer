@@ -77,7 +77,8 @@ __host__ __device__ float triangleIntersectionTest(
     Ray r,
     glm::vec3& intersectionPoint,
     glm::vec3& normal,
-    bool& outside);
+    bool& outside,
+    glm::vec2& uv);
 
 __host__ __device__ void boxAABB(Geom& box);
 

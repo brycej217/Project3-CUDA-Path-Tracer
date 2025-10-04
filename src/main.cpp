@@ -171,8 +171,7 @@ void cleanupCuda()
 
 void initCuda()
 {
-    cudaGLSetGLDevice(0);
-
+    CUDA_CHECK(cudaGLSetGLDevice(0));
     // Clean up on program exit
     atexit(cleanupCuda);
 }
@@ -385,6 +384,9 @@ int main(int argc, char** argv)
     // Initialize ImGui Data
     InitImguiData(guiData);
     InitDataContainer(guiData);
+
+    // texture loading
+    scene->createTextureObjects();
 
     // GLFW main loop
     mainLoop();

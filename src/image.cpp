@@ -2,6 +2,7 @@
 
 #include <stb_image_write.h>
 
+#include <glm/glm.hpp>
 #include <iostream>
 #include <string>
 
@@ -11,7 +12,7 @@ Image::Image(int x, int y)
 
 Image::~Image()
 {
-    delete pixels;
+    delete[] pixels;
 }
 
 void Image::setPixel(int x, int y, const glm::vec3 &pixel)

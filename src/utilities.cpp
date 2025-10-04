@@ -11,6 +11,7 @@
 
 #include <cstdio>
 #include <iostream>
+#include <cuda_runtime.h>
 
 float utilityCore::clamp(float f, float min, float max)
 {

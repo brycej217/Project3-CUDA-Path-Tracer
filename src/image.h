@@ -3,6 +3,7 @@
 #include <glm/glm.hpp>
 
 #include <string>
+#include <stb_image.h>
 
 class Image
 {
@@ -10,6 +11,7 @@ private:
     int xSize;
     int ySize;
     glm::vec3 *pixels;
+    glm::vec3* dev_pixels;
 
 public:
     Image(int x, int y);

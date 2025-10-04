@@ -14,6 +14,9 @@
 #include <string>
 #include <cassert>
 
+#include <stb_image.h>
+#include <stb_image_write.h>
+
 #define WIDTH 800
 #define HEIGHT 800
 
@@ -36,8 +39,8 @@ static glm::mat4 convertAIMatrix(const aiMatrix4x4& m)
 AABB surroundingBox(AABB a, AABB b)
 {
     AABB aabb;
-    aabb.min = glm::vec3(fmin(a.min.x, b.min.x), fmin(a.min.y, b.min.y), fmin(a.min.z, b.min.z));
-    aabb.max = glm::vec3(fmax(a.max.x, b.max.x), fmax(a.max.y, b.max.y), fmax(a.max.z, b.max.z));
+    aabb.min = glm::vec3(fmin(a.min.x, b.min.x), fmin(a.min.y, b.min.y), fmin(a.min.z, b.min.z)) - EPSILON; // add epsilon to give bounding box leniency
+    aabb.max = glm::vec3(fmax(a.max.x, b.max.x), fmax(a.max.y, b.max.y), fmax(a.max.z, b.max.z)) + EPSILON;
     return aabb;
 }
 
@@ -133,21 +136,111 @@ void Scene::convertMats(const aiScene* scene)
         }
         m.emittance = glm::length(m.emissive);
 
-        float roughness = 0.5f, metallic = 0.0f;
-        aim->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughness);
-        aim->Get(AI_MATKEY_METALLIC_FACTOR, metallic);
-        m.roughness = roughness;
-        m.metallic = metallic;
-
-        // Blinn-Phong shininess (many non-PBR formats)
+        // specular
         float shininess = 0.0f;
         if (AI_SUCCESS == aim->Get(AI_MATKEY_SHININESS, shininess)) {
             m.specular.color = glm::vec3(kd.r, kd.g, kd.b);
             m.specular.exponent = shininess;
-            m.hasSpecular = shininess > 0.0f;
+            m.hasSpecular = false; //shininess > 0.0f;
+        }
+
+        // textures
+        aiString texPath;
+        if (aim->GetTexture(aiTextureType_BASE_COLOR, 0, &texPath) == AI_SUCCESS) 
+        {
+            loadTexture(scene, texPath);
+            m.diffTexId = (int)texInfos.size() - 1;
+        }
+        if (aim->GetTexture(aiTextureType_NORMALS, 0, &texPath) == AI_SUCCESS)
+        {
+            loadTexture(scene, texPath);
+            m.normTexId = (int)texInfos.size() - 1;
         }
 
         materials.push_back(m);
+    }
+}
+
+void Scene::loadTexture(const aiScene* scene, aiString texPath)
+{
+    int w = 0, h = 0, ch = 0;
+    stbi_uc* data = nullptr;
+
+    if (texPath.data[0] == '*')
+    {
+        int idx = atoi(texPath.C_Str() + 1);
+        const aiTexture* at = scene->mTextures[idx];
+
+        if (at->mHeight == 0)
+        {
+            data = stbi_load_from_memory(
+                reinterpret_cast<const stbi_uc*>(at->pcData),
+                at->mWidth, &w, &h, &ch, STBI_rgb_alpha);
+        }
+        else
+        {
+            w = at->mWidth; h = at->mHeight; ch = 4;
+            data = (stbi_uc*)malloc(size_t(w) * h * 4);
+
+            for (int i = 0; i < w * h; ++i)
+            {
+                const aiTexel& s = at->pcData[i];
+                data[4 * i + 0] = s.r;
+                data[4 * i + 1] = s.g;
+                data[4 * i + 2] = s.b;
+                data[4 * i + 3] = s.a;
+            }
+        }
+    }
+    else
+    {
+        data = stbi_load(texPath.C_Str(), &w, &h, &ch, STBI_rgb_alpha);
+    }
+
+    if (!data) throw runtime_error("failed to load mesh texture");
+
+    TexInfo info;
+    info.width = w;
+    info.height = h;
+    info.pixels.assign(data, data + size_t(w) * h * 4);
+    stbi_image_free(data);
+
+    texInfos.push_back(info);
+}
+
+void Scene::createTextureObjects()
+{
+    for (size_t i = 0; i < texInfos.size(); ++i) {
+        const TexInfo& info = texInfos[i];
+
+        cudaArray_t array = nullptr;
+        auto ch = cudaCreateChannelDesc<uchar4>();
+        CUDA_CHECK(cudaMallocArray(&array, &ch, info.width, info.height));
+
+        const size_t widthBytes = size_t(info.width) * 4;
+        const size_t srcPitch = widthBytes;
+
+        CUDA_CHECK(cudaMemcpy2DToArray(
+            array, 0, 0,
+            info.pixels.data(), srcPitch,
+            widthBytes, info.height,
+            cudaMemcpyHostToDevice)); // here
+
+        cudaResourceDesc res{};
+        res.resType = cudaResourceTypeArray;
+        res.res.array.array = array;
+
+        cudaTextureDesc td{};
+        td.addressMode[0] = cudaAddressModeWrap;   // or Clamp
+        td.addressMode[1] = cudaAddressModeWrap;
+        td.filterMode = cudaFilterModeLinear;
+        td.readMode = cudaReadModeNormalizedFloat; // -> [0,1]
+        td.normalizedCoords = 1;
+
+        cudaTextureObject_t tex = 0;
+        CUDA_CHECK(cudaCreateTextureObject(&tex, &res, &td, nullptr));
+
+        textures.push_back(tex);
     }
 }
 
