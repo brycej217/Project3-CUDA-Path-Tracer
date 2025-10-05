@@ -369,6 +369,15 @@ void Scene::loadAssimp(const std::string& path)
     }
 
     // BUILD ACCELERATION STRCTURES
+    buildAccelerationStructures();
+
+    // CAMERA
+    initCamera(scene);
+}
+
+void Scene::buildAccelerationStructures()
+{
+    nodesUsed = 1;
     nodes.resize(triangles.size() * 2 - 1);
     nodes[0].left = nodes[0].right = -1;
     nodes[0].startGeom = 0;
@@ -377,9 +386,6 @@ void Scene::loadAssimp(const std::string& path)
     subdivide(0);
 
     num_nodes = nodesUsed;
-
-    // CAMERA
-    initCamera(scene);
 }
 
 void Scene::updateNodeAABB(int index)
@@ -412,7 +418,7 @@ void Scene::subdivide(int index)
 {
     BVHNode& node = nodes[index];
 
-    if (node.numGeoms <= 2)
+    if (node.numGeoms <= geomsPerLeaf)
     {
         node.left = node.right = -1;
         return;

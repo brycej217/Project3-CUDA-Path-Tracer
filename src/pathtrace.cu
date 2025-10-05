@@ -314,7 +314,8 @@ __global__ void shadeIntersection(
     Material* materials,
     cudaTextureObject_t* textures,
     cudaTextureObject_t* env,
-    bool hasEnv)
+    bool hasEnv,
+    bool enableEnv)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -347,7 +348,7 @@ __global__ void shadeIntersection(
         }
         else // if not set throughput to 0
         {
-            if (hasEnv)
+            if (hasEnv && enableEnv)
             {
                 pathSegments[idx].radiance = pathSegments[idx].throughput * sampleEnv(pathSegments[idx], env);
             }
@@ -403,6 +404,10 @@ void materialSort(int num_paths)
 void pathtrace(uchar4* pbo, int iter)
 {
     // trace setup
+    bool earlyTermination = hst_scene->streamCompaction;
+    bool matSort = hst_scene->matSort;
+    bool enableEnv = hst_scene->environmentMapping;
+
     const int traceDepth = hst_scene->state.traceDepth;
     const Camera& cam = hst_scene->state.camera;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
@@ -442,9 +447,10 @@ void pathtrace(uchar4* pbo, int iter)
         checkCUDAError("trace one bounce");
         cudaDeviceSynchronize();
 
-#ifdef MAT_SORT
-        //materialSort(num_paths);
-#endif
+        if (matSort)
+        {
+            materialSort(num_paths);
+        }
 
         // shade intersections
         shadeIntersection << <numblocksPathSegmentTracing, blockSize1d >> > (
@@ -455,14 +461,16 @@ void pathtrace(uchar4* pbo, int iter)
             dev_materials,
             dev_tex,
             dev_env,
-            hst_scene->hasEnv
+            hst_scene->hasEnv,
+            enableEnv
             );
 
         // stream compaction
+        if (earlyTermination)
+        {
+            streamCompact(num_paths);
+        }
 
-#ifdef STREAM_COMPACT
-        streamCompact(num_paths);
-#endif
         depth++;
 
         if (guiData != NULL)

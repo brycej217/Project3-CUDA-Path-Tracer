@@ -29,7 +29,7 @@ private:
     void loadAssimp(const std::string& path);
 
     void nodeDFS(const aiNode* node, const glm::mat4& parentTransform, const aiScene* scene, std::unordered_map<std::string, glm::mat4>& map);
-    
+
     void loadTexture(const aiScene* scene, aiString texPath);
 
     void updateNodeAABB(int index);
@@ -42,6 +42,7 @@ public:
     Scene(std::string filename);
     void createTextureObjects();
     void loadEnv();
+    void buildAccelerationStructures();
 
     std::vector<Geom> geoms;
     std::vector<BVHNode> nodes;
@@ -56,4 +57,12 @@ public:
     bool hasEnv = false;
     cudaArray_t envArray;
     cudaTextureObject_t env;
+
+    // GUI Params
+    bool streamCompaction = true;
+    bool matSort = false;
+    bool environmentMapping = true;
+    int traceDepth = 8;
+    int iterations = 5000;
+    int geomsPerLeaf = 2;
 };
