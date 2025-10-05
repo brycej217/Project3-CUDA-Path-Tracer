@@ -263,6 +263,8 @@ void RenderImGui()
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
+    bool changed = false;
+
     bool show_demo_window = true;
     bool show_another_window = false;
     static float f = 0.0f;
@@ -275,16 +277,18 @@ void RenderImGui()
     ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
     ImGui::Text("Traced Depth %d", imguiData->TracedDepth);
 
-    // LOOK: Un-Comment to check the output window and usage           // Display some text (you can use a format strings too)
-    ImGui::Checkbox("Early Termination", &scene->streamCompaction);      // Edit bools storing our window open/close state
-    ImGui::Checkbox("Material Sort", &scene->matSort);
-    ImGui::Checkbox("Environment Mapping", &scene->environmentMapping);
-    ImGui::Checkbox("Depth of Field", &scene->dof);
-    ImGui::SliderFloat("Lens Radius", &scene->state.camera.lensRadius, 0.0f, 1.0f);
-    ImGui::SliderFloat("Focal Distance", &scene->state.camera.focalDistance, 0.1f, 200.0f);
-    ImGui::SliderInt("Trace Depth", &scene->traceDepth, 1, 12);
-    ImGui::SliderInt("Iterations", &scene->iterations, 1, 50000);
-    ImGui::SliderInt("BVH Leaf Geom Count", &scene->geomsPerLeaf, 1, 20);
+    // GUI Options
+    
+    if (ImGui::Checkbox("Early Termination", &scene->streamCompaction)) changed = true;
+    if (ImGui::Checkbox("Material Sort", &scene->matSort)) changed = true;
+    if (ImGui::Checkbox("Environment Mapping", &scene->environmentMapping)) changed = true;
+    if (ImGui::Checkbox("Depth of Field", &scene->dof)) changed = true;
+    if (ImGui::SliderInt("Trace Depth", &scene->traceDepth, 1, 12)) changed = true;
+    if (ImGui::SliderInt("Iterations", &scene->iterations, 1, 50000)) changed = true;
+    if (ImGui::SliderFloat("Lens Radius", &scene->state.camera.lensRadius, 0.0f, 1.0f)) changed = true;
+    if (ImGui::SliderFloat("Focal Distance", &scene->state.camera.focalDistance, 0.1f, 200.0f)) changed = true;
+    if (ImGui::SliderInt("BVH Leaf Geom Count", &scene->geomsPerLeaf, 1, 20)) changed = true;
+
     scene->state.iterations = scene->iterations;
     scene->state.traceDepth = scene->traceDepth;
 
@@ -297,6 +301,11 @@ void RenderImGui()
 
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+    if (changed)
+    {
+        iteration = 0;
+    }
 
 }
 
