@@ -130,7 +130,6 @@ struct Material
     int diffTexId = -1;
     int normTexId = -1;
     int roughTexId = -1;
-    int metalTexId = -1;
 };
 
 struct Camera

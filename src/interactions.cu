@@ -93,11 +93,6 @@ __device__ Sample sampleBSDF(
         metallic = glm::clamp(r.x, 0.0f, 1.0f);
         roughness = glm::clamp(r.y, 0.0f, 1.0f);
     }
-    if (m.metalTexId >= 0)
-    {
-        float4 mr = tex2D<float4>(textures[m.metalTexId], uv.x, uv.y);
-        //metallic = glm::clamp(mr.z, 0.0f, 1.0f);
-    }
 
     vec3 diffDir = calculateRandomDirectionInHemisphere(normal, rng);
     vec3 refDir = reflect(pathSegment.ray.direction, normal);

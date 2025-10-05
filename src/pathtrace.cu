@@ -355,7 +355,8 @@ __global__ void shadeIntersection(
     cudaTextureObject_t* textures,
     cudaTextureObject_t* env,
     bool hasEnv,
-    bool enableEnv)
+    bool enableEnv,
+    float envGain)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -390,7 +391,7 @@ __global__ void shadeIntersection(
         {
             if (hasEnv && enableEnv)
             {
-                pathSegments[idx].radiance = pathSegments[idx].throughput * sampleEnv(pathSegments[idx], env);
+                pathSegments[idx].radiance = pathSegments[idx].throughput * sampleEnv(pathSegments[idx], env) * envGain;
             }
             else
             {
@@ -502,7 +503,8 @@ void pathtrace(uchar4* pbo, int iter)
             dev_tex,
             dev_env,
             hst_scene->hasEnv,
-            enableEnv
+            enableEnv,
+            hst_scene->envGain
             );
 
         // stream compaction

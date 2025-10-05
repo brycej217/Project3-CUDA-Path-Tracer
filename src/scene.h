@@ -66,4 +66,5 @@ public:
     int iterations = 5000;
     int geomsPerLeaf = 2;
     bool dof = true;
+    float envGain = 0.5f;
 };

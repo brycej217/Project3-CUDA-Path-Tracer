@@ -17,8 +17,8 @@
 #include <stb_image.h>
 #include <stb_image_write.h>
 
-#define WIDTH 800
-#define HEIGHT 800
+#define WIDTH 1920
+#define HEIGHT 1080
 
 using namespace std;
 using json = nlohmann::json;
@@ -67,6 +67,7 @@ void Scene::initCamera(const aiScene* scene)
     Camera& camera = state.camera;
     RenderState& state = this->state;
     
+    // default camera values
     camera.resolution.x = WIDTH;
     camera.resolution.y = HEIGHT;
     float fovy;
@@ -74,6 +75,7 @@ void Scene::initCamera(const aiScene* scene)
     state.traceDepth = 8;
     state.imageName = scene->mName.C_Str();
 
+    // if the scene has a camera fill in camera struct with its data
     if (scene->mCameras)
     {
         aiCamera* aiCam = scene->mCameras[0];
@@ -89,8 +91,9 @@ void Scene::initCamera(const aiScene* scene)
     }
     else
     {
+        // otherwise we copy the values from the cornell box json
         fovy = 45.0;
-        camera.position = glm::vec3(0.0, 25.0, 50.5);
+        camera.position = glm::vec3(0.0, 25.0, 240.5);
         camera.lookAt = camera.position + glm::vec3(0.0, 0.0, -camera.position.z - 5.0);
         camera.up = glm::vec3(0.0, 1.0, 0.0);
     }
@@ -115,7 +118,7 @@ void Scene::initCamera(const aiScene* scene)
 
 void Scene::convertMats(const aiScene* scene)
 {
-
+    // for each material in the scene get its assimp data and convert to custom data struct
     for (int i = 0; i < scene->mNumMaterials; i++)
     {
         const aiMaterial* aim = scene->mMaterials[i];
@@ -131,11 +134,12 @@ void Scene::convertMats(const aiScene* scene)
 
         // emissive
         aiColor3D ke(0.f, 0.f, 0.f);
-        if (AI_SUCCESS == aim->Get(AI_MATKEY_COLOR_EMISSIVE, ke)) {
+        if (AI_SUCCESS == aim->Get(AI_MATKEY_COLOR_EMISSIVE, ke)) 
+        {
             m.emissive = glm::vec3(ke.r, ke.g, ke.b);
+            m.emittance = glm::length(m.emissive);
         }
-        m.emittance = glm::length(m.emissive);
-
+        
         // metallic/roughness
         float roughness = 1.0f;
         float metallic = 0.0f;
@@ -143,14 +147,6 @@ void Scene::convertMats(const aiScene* scene)
         aim->Get(AI_MATKEY_METALLIC_FACTOR, metallic);
         m.roughness = roughness;
         m.metallic = metallic;
-
-        // specular
-        float shininess = 0.0f;
-        if (AI_SUCCESS == aim->Get(AI_MATKEY_SHININESS, shininess)) {
-            m.specular.color = glm::vec3(kd.r, kd.g, kd.b);
-            m.specular.exponent = shininess;
-            m.hasSpecular = false; //shininess > 0.0f;
-        }
 
         // textures
         aiString texPath;
@@ -179,7 +175,7 @@ void Scene::loadTexture(const aiScene* scene, aiString texPath)
     int w = 0, h = 0, ch = 0;
     stbi_uc* data = nullptr;
 
-    if (texPath.data[0] == '*')
+    if (texPath.data[0] == '*') // if texpath starts with * then we load the embedded aiTexture
     {
         int idx = atoi(texPath.C_Str() + 1);
         const aiTexture* at = scene->mTextures[idx];
@@ -190,7 +186,7 @@ void Scene::loadTexture(const aiScene* scene, aiString texPath)
                 reinterpret_cast<const stbi_uc*>(at->pcData),
                 at->mWidth, &w, &h, &ch, STBI_rgb_alpha);
         }
-        else
+        else // otherwise simply parse using stbi
         {
             w = at->mWidth; h = at->mHeight; ch = 4;
             data = (stbi_uc*)malloc(size_t(w) * h * 4);
@@ -218,9 +214,12 @@ void Scene::loadTexture(const aiScene* scene, aiString texPath)
     info.pixels.assign(data, data + size_t(w) * h * 4);
     stbi_image_free(data);
 
-    texInfos.push_back(info);
+    texInfos.push_back(info); // push back a texInfo which contains data for later loading the texture
 }
 
+/*
+* Load environment map stores as env.hdr
+*/
 void Scene::loadEnv()
 {
     const char* path = "../scenes/env/env.hdr";
@@ -257,21 +256,24 @@ void Scene::loadEnv()
     hasEnv = true;
 }
 
+/*
+* Create cuda texture objects based on texInfo structs
+*/
 void Scene::createTextureObjects()
 {
-    for (size_t i = 0; i < texInfos.size(); ++i) {
-        const TexInfo& info = texInfos[i];
+    for (size_t i = 0; i < texInfos.size(); ++i) 
+    {
+        TexInfo& info = texInfos[i];
 
         cudaArray_t array = nullptr;
         auto ch = cudaCreateChannelDesc<uchar4>();
         CUDA_CHECK(cudaMallocArray(&array, &ch, info.width, info.height));
 
-        const size_t widthBytes = size_t(info.width) * 4;
-        const size_t srcPitch = widthBytes;
+        size_t widthBytes = size_t(info.width) * 4;
 
         CUDA_CHECK(cudaMemcpy2DToArray(
             array, 0, 0,
-            info.pixels.data(), srcPitch,
+            info.pixels.data(), widthBytes,
             widthBytes, info.height,
             cudaMemcpyHostToDevice));
 
@@ -280,10 +282,10 @@ void Scene::createTextureObjects()
         res.res.array.array = array;
 
         cudaTextureDesc td{};
-        td.addressMode[0] = cudaAddressModeWrap;   // or Clamp
+        td.addressMode[0] = cudaAddressModeWrap;
         td.addressMode[1] = cudaAddressModeWrap;
         td.filterMode = cudaFilterModeLinear;
-        td.readMode = cudaReadModeNormalizedFloat; // -> [0,1]
+        td.readMode = cudaReadModeNormalizedFloat;
         td.normalizedCoords = 1;
 
         cudaTextureObject_t tex = 0;
@@ -293,30 +295,32 @@ void Scene::createTextureObjects()
     }
 }
 
+/*
+* DFS through assimp scene hierarchy to obtain global transforms for each mesh
+*/
 void Scene::nodeDFS(const aiNode* node, const glm::mat4& parentTransform, const aiScene* scene, unordered_map<string, glm::mat4>& map)
 {
     glm::mat4 local = convertAIMatrix(node->mTransformation);
-    glm::mat4 world = parentTransform * local;
-
+    glm::mat4 world = parentTransform * local; // multiply local transform by parent world transform
 
     for (int i = 0; i < node->mNumMeshes; i++)
     {
         int idx = node->mMeshes[i];
         std::string name = scene->mMeshes[idx]->mName.C_Str();
-        map[name] = world;
+        map[name] = world; // map mesh name to its transform
     }
 
     for (int i = 0; i < node->mNumChildren; i++)
     {
-        nodeDFS(node->mChildren[i], world, scene, map);
+        nodeDFS(node->mChildren[i], world, scene, map); // recurse
     }
 }
 
 void Scene::loadAssimp(const std::string& path)
 {
     Assimp::Importer importer;
-    const aiScene* scene = importer.ReadFile(path,
-        aiProcess_Triangulate |
+    const aiScene* scene = importer.ReadFile(path, // preprocessors for unified aiscene data structures
+        aiProcess_Triangulate | // triangulate faces
         aiProcess_GlobalScale |
         aiProcess_GenSmoothNormals |
         aiProcess_FlipUVs |
@@ -332,15 +336,15 @@ void Scene::loadAssimp(const std::string& path)
     convertMats(scene); // convert ai mats to our custom mat structs
 
     unordered_map<string, glm::mat4> nodeTransforms; // get node transforms for global coordinates
-
     nodeDFS(scene->mRootNode, glm::mat4(1.0f), scene, nodeTransforms);
 
+    // for each mesh get its vertices, triangles, and transform them by their global transform
     for (unsigned int i = 0; i < scene->mNumMeshes; i++)
     {
         const aiMesh* currMesh = scene->mMeshes[i];
         glm::mat4 transform = nodeTransforms[currMesh->mName.C_Str()];
 
-        const int baseVertex = static_cast<int>(vertices.size());
+        const int baseVertex = static_cast<int>(vertices.size()); // utilize vertex base offset for mapping indics to vertices
         const int matId = currMesh->mMaterialIndex;
 
         // find vertices
@@ -354,6 +358,7 @@ void Scene::loadAssimp(const std::string& path)
             vertices.push_back(vertex);
         }
 
+        // find all vertices that correspond with triangle
         for (unsigned int j = 0; j < currMesh->mNumFaces; j++)
         {
             const aiFace* face = &currMesh->mFaces[j];
@@ -388,6 +393,9 @@ void Scene::buildAccelerationStructures()
     num_nodes = nodesUsed;
 }
 
+/*
+* Update node bounding box based on the geometry present inside of the node
+*/
 void Scene::updateNodeAABB(int index)
 {
     BVHNode& node = nodes[index];
@@ -400,6 +408,9 @@ void Scene::updateNodeAABB(int index)
     }
 }
 
+/*
+* Compairson function for q-sort
+*/
 static int axis;
 int comp(const void* a, const void* b)
 {
@@ -418,7 +429,7 @@ void Scene::subdivide(int index)
 {
     BVHNode& node = nodes[index];
 
-    if (node.numGeoms <= geomsPerLeaf)
+    if (node.numGeoms <= geomsPerLeaf) // terminate when we've reached appropriate geom count
     {
         node.left = node.right = -1;
         return;
@@ -437,6 +448,9 @@ void Scene::subdivide(int index)
     assert(left != index && right != index);
     assert(right < (int)nodes.size());
 
+    // if we are not sorting then we split our nodes geometry in half and allocate them to the left and right nodes
+    // we then recurse into these nodes until we terminate
+
     node.left = left;
     node.right = right;
 
@@ -449,7 +463,7 @@ void Scene::subdivide(int index)
     nodes[left].left = nodes[left].right = -1;
     nodes[right].left = nodes[right].right = -1;
 
-    updateNodeAABB(left);
+    updateNodeAABB(left); // recurse
     updateNodeAABB(right);
     subdivide(left);
     subdivide(right);

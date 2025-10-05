@@ -287,6 +287,7 @@ void RenderImGui()
     if (ImGui::SliderInt("Iterations", &scene->iterations, 1, 50000)) changed = true;
     if (ImGui::SliderFloat("Lens Radius", &scene->state.camera.lensRadius, 0.0f, 1.0f)) changed = true;
     if (ImGui::SliderFloat("Focal Distance", &scene->state.camera.focalDistance, 0.1f, 200.0f)) changed = true;
+    if (ImGui::SliderFloat("Env Gain", &scene->envGain, 0.0f, 1.0f)) changed = true;
     if (ImGui::SliderInt("BVH Leaf Geom Count", &scene->geomsPerLeaf, 1, 20)) changed = true;
 
     scene->state.iterations = scene->iterations;
