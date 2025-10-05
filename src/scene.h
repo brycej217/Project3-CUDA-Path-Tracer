@@ -65,4 +65,5 @@ public:
     int traceDepth = 8;
     int iterations = 5000;
     int geomsPerLeaf = 2;
+    bool dof = true;
 };

@@ -279,6 +279,9 @@ void RenderImGui()
     ImGui::Checkbox("Early Termination", &scene->streamCompaction);      // Edit bools storing our window open/close state
     ImGui::Checkbox("Material Sort", &scene->matSort);
     ImGui::Checkbox("Environment Mapping", &scene->environmentMapping);
+    ImGui::Checkbox("Depth of Field", &scene->dof);
+    ImGui::SliderFloat("Lens Radius", &scene->state.camera.lensRadius, 0.0f, 1.0f);
+    ImGui::SliderFloat("Focal Distance", &scene->state.camera.focalDistance, 0.1f, 200.0f);
     ImGui::SliderInt("Trace Depth", &scene->traceDepth, 1, 12);
     ImGui::SliderInt("Iterations", &scene->iterations, 1, 50000);
     ImGui::SliderInt("BVH Leaf Geom Count", &scene->geomsPerLeaf, 1, 20);

@@ -22,6 +22,7 @@ The algorithms were based on class materials and excerpts from [GPU Gems 3 Chapt
 * Bounding Volume Hierarchies
 * Diffuse, Normal, and Roughness Texture Mapping
 * Environment Mapping
+* Depth of Field
 
 ## Implementation
 ### Naive Scan
