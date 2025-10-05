@@ -24,7 +24,8 @@ This project involved creating a path-traced renderer using CUDA.
 * Depth of Field
 * Imperfect Specular Reflection
 
-## Implementation
-### Naive Scan
+## Theory
 
-### Work-Efficient Scan
+## Implementation
+
+## Analysis
