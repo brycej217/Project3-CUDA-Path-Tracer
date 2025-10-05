@@ -69,6 +69,7 @@ __device__ Sample sampleBSDF(
     thrust::default_random_engine &rng,
     cudaTextureObject_t* textures)
 {
+
     Sample sample;
     vec2 uv = intersection.uv;
 
@@ -103,7 +104,7 @@ __device__ Sample sampleBSDF(
     vec3 intersect = pathSegment.ray.origin + pathSegment.ray.direction * intersection.t;
 
     sample.wi.origin = intersect + normal * EPSILON;
-
+    
     sample.wi.direction = glm::mix(refDir, diffDir, roughness);
 
     sample.lo = color;
