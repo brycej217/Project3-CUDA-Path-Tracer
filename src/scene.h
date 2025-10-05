@@ -41,6 +41,7 @@ private:
 public:
     Scene(std::string filename);
     void createTextureObjects();
+    void loadEnv();
 
     std::vector<Geom> geoms;
     std::vector<BVHNode> nodes;
@@ -51,4 +52,8 @@ public:
     std::vector<Vertex> vertices;
     RenderState state;
     int num_nodes;
+
+    bool hasEnv = false;
+    cudaArray_t envArray;
+    cudaTextureObject_t env;
 };

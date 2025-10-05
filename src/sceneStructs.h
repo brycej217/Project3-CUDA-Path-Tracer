@@ -114,8 +114,8 @@ struct Material
 {
     glm::vec3 color;
     glm::vec3 emissive;
-    float roughness;
-    float metallic;
+    float roughness = 1.0f;
+    float metallic = 0.0f;
     struct
     {
         float exponent;
@@ -129,6 +129,8 @@ struct Material
 
     int diffTexId = -1;
     int normTexId = -1;
+    int roughTexId = -1;
+    int metalTexId = -1;
 };
 
 struct Camera

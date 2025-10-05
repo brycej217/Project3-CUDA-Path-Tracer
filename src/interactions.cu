@@ -51,67 +51,15 @@ __host__ __device__ vec3 reflect(vec3 V, vec3 N)
     return V - 2 * dot(V, N) * N;
 }
 
-__host__ __device__ Sample calculateSpecular(
-    PathSegment& pathSegment,
-    ShadeableIntersection& intersection,
-    const Material& m,
-    thrust::default_random_engine& rng)
+__device__ vec3 sampleEnv(PathSegment& pathSegment, cudaTextureObject_t* env)
 {
-    Sample sample;
+    vec3 dir = pathSegment.ray.direction;
 
-    vec3 intersect = pathSegment.ray.origin + pathSegment.ray.direction * intersection.t;
-    sample.wi.origin = intersect + intersection.surfaceNormal * EPSILON;
-    sample.wi.direction = reflect(pathSegment.ray.direction, intersection.surfaceNormal);
-    sample.lo = m.specular.color;
+    float u = atan2f(dir.z, dir.x) * (0.5f / PI) + 0.5f;
+    float v = 0.5f - asinf(glm::clamp(dir.y, -1.f, 1.f)) / PI;
 
-    return sample;
-}
-
-__host__ __device__ Sample calculateDiffuse(
-    PathSegment& pathSegment,
-    ShadeableIntersection& intersection,
-    const Material& m,
-    thrust::default_random_engine& rng)
-{
-    Sample sample;
-
-    vec3 normal = intersection.surfaceNormal;
-
-    vec3 intersect = pathSegment.ray.origin + pathSegment.ray.direction * intersection.t;
-    sample.wi.origin = intersect + normal * EPSILON;
-    sample.wi.direction = calculateRandomDirectionInHemisphere(normal, rng);
-
-    sample.lo = m.color; // attenuate color (perfectly diffuse surface scatter light equally in all directions so amount of potential light coming towards wo is constant)
-
-    return sample;
-}
-
-__device__ Sample calculateTexture(
-    PathSegment& pathSegment,
-    ShadeableIntersection& intersection,
-    const Material& m,
-    thrust::default_random_engine& rng,
-    cudaTextureObject_t* textures)
-{
-    Sample sample;
-    vec2 uv = intersection.uv;
-
-    vec3 normal = intersection.surfaceNormal;
-
-    if (m.normTexId >= 0)
-    {
-        float4 n = tex2D<float4>(textures[m.normTexId], uv.x, uv.y);
-        vec3 normal = vec3(n.x, n.y, n.z);
-    }
-
-    vec3 intersect = pathSegment.ray.origin + pathSegment.ray.direction * intersection.t;
-    sample.wi.origin = intersect + normal * EPSILON;
-    sample.wi.direction = calculateRandomDirectionInHemisphere(normal, rng);
-
-    float4 c = tex2D<float4>(textures[m.diffTexId], uv.x, uv.y);
-    sample.lo = vec3(c.x, c.y, c.z);
-
-    return sample;
+    float4 c = tex2D<float4>(*env, u, v);
+    return vec3(c.x, c.y, c.z);
 }
 
 __device__ Sample sampleBSDF(
@@ -121,16 +69,43 @@ __device__ Sample sampleBSDF(
     thrust::default_random_engine &rng,
     cudaTextureObject_t* textures)
 {
-    // diffuse
+    Sample sample;
+    vec2 uv = intersection.uv;
+
+    vec3 normal = intersection.surfaceNormal;
+    vec3 color = m.color;
+    float roughness = m.roughness;
+    float metallic = m.metallic;
+    if (m.normTexId >= 0)
+    {
+        float4 n = tex2D<float4>(textures[m.normTexId], uv.x, uv.y);
+        vec3 normal = normalize(vec3(n.x, n.y, n.z) * 2.0f - 1.0f);
+    }
     if (m.diffTexId >= 0)
     {
-        return calculateTexture(pathSegment, intersection, m, rng, textures);
+        float4 c = tex2D<float4>(textures[m.diffTexId], uv.x, uv.y);
+        color = vec3(c.x, c.y, c.z);
     }
-
-    if (m.hasSpecular)
+    if (m.roughTexId >= 0)
     {
-        return calculateSpecular(pathSegment, intersection, m, rng);
+        float4 r = tex2D<float4>(textures[m.roughTexId], uv.x, uv.y);
+        metallic = glm::clamp(r.x, 0.0f, 1.0f);
+        roughness = glm::clamp(r.y, 0.0f, 1.0f);
+    }
+    if (m.metalTexId >= 0)
+    {
+        float4 mr = tex2D<float4>(textures[m.metalTexId], uv.x, uv.y);
+        //metallic = glm::clamp(mr.z, 0.0f, 1.0f);
     }
 
-    return calculateDiffuse(pathSegment, intersection, m, rng);
+    vec3 diffDir = calculateRandomDirectionInHemisphere(normal, rng);
+    vec3 refDir = reflect(pathSegment.ray.direction, normal);
+    vec3 intersect = pathSegment.ray.origin + pathSegment.ray.direction * intersection.t;
+
+    sample.wi.origin = intersect + normal * EPSILON;
+
+    sample.wi.direction = glm::mix(refDir, diffDir, roughness);
+
+    sample.lo = color;
+    return sample;
 }

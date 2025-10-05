@@ -136,6 +136,14 @@ void Scene::convertMats(const aiScene* scene)
         }
         m.emittance = glm::length(m.emissive);
 
+        // metallic/roughness
+        float roughness = 1.0f;
+        float metallic = 0.0f;
+        aim->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughness);
+        aim->Get(AI_MATKEY_METALLIC_FACTOR, metallic);
+        m.roughness = roughness;
+        m.metallic = metallic;
+
         // specular
         float shininess = 0.0f;
         if (AI_SUCCESS == aim->Get(AI_MATKEY_SHININESS, shininess)) {
@@ -155,6 +163,11 @@ void Scene::convertMats(const aiScene* scene)
         {
             loadTexture(scene, texPath);
             m.normTexId = (int)texInfos.size() - 1;
+        }
+        if (aim->GetTexture(aiTextureType_DIFFUSE_ROUGHNESS, 0, &texPath) == AI_SUCCESS)
+        {
+            loadTexture(scene, texPath);
+            m.roughTexId = (int)texInfos.size() - 1;
         }
 
         materials.push_back(m);
@@ -208,6 +221,42 @@ void Scene::loadTexture(const aiScene* scene, aiString texPath)
     texInfos.push_back(info);
 }
 
+void Scene::loadEnv()
+{
+    const char* path = "../scenes/env/env.hdr";
+
+    int w = 0, h = 0, ch = 0;
+    float* data = nullptr;
+    data = stbi_loadf(path, &w, &h, &ch, 4);
+
+    if (!data) throw std::runtime_error("failed to load HDR env");
+
+    cudaChannelFormatDesc chDesc = cudaCreateChannelDesc<float4>();
+    CUDA_CHECK(cudaMallocArray(&envArray, &chDesc, w, h));
+
+    const size_t rowBytes = size_t(w) * sizeof(float4);
+    CUDA_CHECK(cudaMemcpy2DToArray(
+        envArray, 0, 0,
+        data, rowBytes,
+        rowBytes, h,
+        cudaMemcpyHostToDevice));
+
+    stbi_image_free(data);
+
+    cudaResourceDesc res{};  res.resType = cudaResourceTypeArray;
+    res.res.array.array = envArray;
+
+    cudaTextureDesc td{};
+    td.addressMode[0] = cudaAddressModeWrap;
+    td.addressMode[1] = cudaAddressModeClamp;
+    td.filterMode = cudaFilterModeLinear;
+    td.readMode = cudaReadModeElementType;
+    td.normalizedCoords = 1;
+
+    CUDA_CHECK(cudaCreateTextureObject(&env, &res, &td, nullptr));
+    hasEnv = true;
+}
+
 void Scene::createTextureObjects()
 {
     for (size_t i = 0; i < texInfos.size(); ++i) {
@@ -224,7 +273,7 @@ void Scene::createTextureObjects()
             array, 0, 0,
             info.pixels.data(), srcPitch,
             widthBytes, info.height,
-            cudaMemcpyHostToDevice)); // here
+            cudaMemcpyHostToDevice));
 
         cudaResourceDesc res{};
         res.resType = cudaResourceTypeArray;

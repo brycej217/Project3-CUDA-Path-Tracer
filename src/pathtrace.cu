@@ -91,6 +91,7 @@ static ShadeableIntersection* dev_intersections = NULL;
 // TODO: static variables for device memory, any extra info you need, etc
 // ...
 static cudaTextureObject_t* dev_tex = NULL;
+static cudaTextureObject_t* dev_env = NULL;
 static BVHNode* dev_nodes = NULL;
 static Triangle* dev_tris = NULL;
 static int* dev_keys1 = NULL;
@@ -144,6 +145,10 @@ void pathtraceInit(Scene* scene)
     cudaMalloc(&dev_tex, scene->textures.size() * sizeof(cudaTextureObject_t));
     cudaMemcpy(dev_tex, scene->textures.data(), scene->textures.size() * sizeof(cudaTextureObject_t), cudaMemcpyHostToDevice);
 
+    // Env
+    cudaMalloc(&dev_env, sizeof(cudaTextureObject_t));
+    cudaMemcpy(dev_env, &scene->env, sizeof(cudaTextureObject_t), cudaMemcpyHostToDevice);
+
     checkCUDAError("pathtraceInit");
 }
 
@@ -161,6 +166,7 @@ void pathtraceFree()
 
     cudaFree(dev_tris);
     cudaFree(dev_tex);
+    cudaFree(dev_env);
     checkCUDAError("pathtraceFree");
 }
 
@@ -189,7 +195,7 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
         segment.compact = false;
 
         // get noise values
-        thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, pathSegments[index].remainingBounces);
+        thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, traceDepth);
         thrust::uniform_real_distribution<float> u(-0.5f, 0.5f);
         float xNoise = u(rng);
         float yNoise = u(rng);
@@ -306,9 +312,12 @@ __global__ void shadeIntersection(
     ShadeableIntersection* shadeableIntersections,
     PathSegment* pathSegments,
     Material* materials,
-    cudaTextureObject_t* textures)
+    cudaTextureObject_t* textures,
+    cudaTextureObject_t* env,
+    bool hasEnv)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
     if (idx < num_paths)
     {
         ShadeableIntersection intersection = shadeableIntersections[idx];
@@ -338,8 +347,15 @@ __global__ void shadeIntersection(
         }
         else // if not set throughput to 0
         {
-            pathSegments[idx].throughput = vec3(0.0f);
-            pathSegments[idx].compact = true;
+            if (hasEnv)
+            {
+                pathSegments[idx].radiance = pathSegments[idx].throughput * sampleEnv(pathSegments[idx], env);
+            }
+            else
+            {
+                pathSegments[idx].throughput = vec3(0.0f);
+                pathSegments[idx].compact = true;
+            }
         }
     }
 }
@@ -437,7 +453,9 @@ void pathtrace(uchar4* pbo, int iter)
             dev_intersections,
             dev_paths,
             dev_materials,
-            dev_tex
+            dev_tex,
+            dev_env,
+            hst_scene->hasEnv
             );
 
         // stream compaction

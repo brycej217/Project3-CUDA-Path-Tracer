@@ -39,6 +39,8 @@ __device__ glm::vec3 calculateRandomDirectionInHemisphere(
  *
  * You may need to change the parameter list for your purposes!
  */
+__device__ glm::vec3 sampleEnv(PathSegment& pathSegment, cudaTextureObject_t* env);
+
 __device__ Sample sampleBSDF(
     PathSegment& pathSegment,
     ShadeableIntersection& intersection,

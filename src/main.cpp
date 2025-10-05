@@ -387,6 +387,8 @@ int main(int argc, char** argv)
 
     // texture loading
     scene->createTextureObjects();
+    scene->loadEnv();
+
 
     // GLFW main loop
     mainLoop();
