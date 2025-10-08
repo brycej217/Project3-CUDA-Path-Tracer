@@ -11,7 +11,7 @@ CUDA Path Tracer
 ![](img/splash2.png)
 ![](img/splash.png)
 ![](img/chinese.png)
-![](img/open.png)
+![](img/lizard.png)
 This project involved creating a path-traced renderer using CUDA. All of the path tracing logic is executed on CUDA kernels, the result of which is transferred to an OpenGL texture object for display.
 
 ### Path Tracing
@@ -30,10 +30,10 @@ on other parts of the project outside of file parsing logic.
 ![](img/alltex.png)
 Texture mapping is a common technique for adding realism to objects in a scene. This path tracer takes advantage of 3 types of texture mapping, diffuse, normal, and roughness mapping, all 3 of which we can visualize respectively below:  
 <p align="center">
-  <img src="img/notex.png" width="200"/>
-  <img src="img/difftex.png" width="200"/><br/>
-  <img src="img/normal.png" width="200"/>
-  <img src="img/roughness.png" width="200"/>
+  <img src="img/notex.png" width="400"/>
+  <img src="img/difftex.png" width="400"/><br/>
+  <img src="img/normal.png" width="400"/>
+  <img src="img/roughness.png" width="400"/>
 </p>
 
 ### Imperfect Specular Reflection
@@ -42,24 +42,27 @@ This path tracer utilizes roughness by calculating a specular reflection vector 
 This provides a convincing imperfect specular reflection affect without PBR. Above you can see roughness values varying from 0.0 to 1.0 across the grid.  
 
 ### Environment Mapping
-![](img/env1.png)
-![](img/env2.png)
-![](img/env3.png)
-![](img/env4.png)  
+<p align="center">
+  <img src="img/env1.png" width="400"/>
+  <img src="img/env2.png" width="400"/><br/>
+  <img src="img/env3.png" width="400"/>
+  <img src="img/env4.png" width="400"/>
+</p> 
 
 When a ray does not intersect geometry, rather than simply coloring the pixel based on some clear value, we can instead sample from an image to provide an environment map effect. By adjusting ray radiance by these values 
 as well we can provide what is essentially a global light source.
 
 ### Depth of Field
-![](img/dof2.png)
-![](img/dof3.png)  
+<p align="center">
+  <img src="img/dof2.png" width="400"/>
+  <img src="img/dof3.png" width="400"/><br/>
+</p> 
 
 To simulate more traditional cameras, we can mimic the effect of a lens by sampling our rays along some simulated aperature. A more comprehensive overview is detailed in [PBRT 5.2.3](https://pbr-book.org/4ed/Cameras_and_Film/Projective_Camera_Models#TheThinLensModelandDepthofField).  
 Here's what the above scene looks like without depth of field effects:
 ![](img/dof1.png)
 
 ### Stochastic Sampled Antialiasing
-![](img/lizard.png)
 Antialising in a path tracer is essentially free as we can simply jitter our rays within the pixel each iteration. Thus by adding some noise to our ray directions each iteration we can achieve antialiasing.
 
 ## Analysis
@@ -74,13 +77,17 @@ Since our path tracer is being executed on the GPU, we take advantage of the inh
 to a thread executing on the GPU. This parallelism was further optimized with 3 major techniques, namely bounding volume hierarchies, early termination and material sorting. Below is an analysis of both total iteration runtime 
 as well as kernel runtime analysis using NSight Compute, the results of which will be discussed in the feature's respective section:   
 
-![](img/iterpf.png)
-![](img/kernelpf.png)  
+<p align="center">
+  <img src="img/iterpf.png" width="400"/>
+  <img src="img/kernelpf.png" width="400"/><br/>
+</p> 
 
 We will also be discussing the path tracer's performance in closed scenes, which can be scene in the following charts:  
 
-![](img/iterclosed.png)
-![](img/kernclosed.png)  
+<p align="center">
+  <img src="img/iterclosed.png" width="400"/>
+  <img src="img/kernclosed.png" width="400"/><br/>
+</p> 
 
 ### Bounding Volume Hierarchies
 ![](img/bvh.png)
@@ -120,8 +127,10 @@ kernel as we expected since memory access overhead was reduced. However, it also
 ## Visual Improvemnts Performance Analysis
 Below is an analysis of both total iteration runtime as well as kernel runtime analysis using NSight Compute, the results of which will be discussed in the feature's respective section:   
 
-![](img/itervis.png)
-![](img/kernvis.png)  
+<p align="center">
+  <img src="img/itervis.png" width="400"/>
+  <img src="img/kernvis.png" width="400"/><br/>
+</p> 
 
 ### Texture Mapping
 As we can see from the analysis, texture mapping introduced a slight performance cost of 6 ms as compared to the baseline. From the NSight Systems report, most of this runtime was added to the shade intersections kernel, as expected, 
