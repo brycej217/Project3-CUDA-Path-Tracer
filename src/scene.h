@@ -66,7 +66,7 @@ public:
     bool texturing = true;
     bool bvh = true;
 
-    int traceDepth = 2;
+    int traceDepth = 4;
     int iterations = 5000;
 
     bool dof = false;

@@ -9,12 +9,11 @@ CUDA Path Tracer
 
 # CIS 5650 Project 3 - Path Tracer
 ![](img/splash2.png)
-![](img/splash.png)
 ![](img/chinese.png)
-![](img/lizard.png)
 This project involved creating a path-traced renderer using CUDA. All of the path tracing logic is executed on CUDA kernels, the result of which is transferred to an OpenGL texture object for display.
 
 ### Path Tracing
+![](img/splash.png) 
 Path tracing is a rendering technique that simulates how light bounces and interacts with surfaces. The process starts by defining a camera, and then shooting rays out 
 into the scene from that point. What makes path tracing able to generate such photorealistic renders is that when we shoot out the rays, at the intersection point between the ray 
 and the scene geometry, we then shoot out another ray in some direction, based on the intersected material's properties. We then continue this until we reach a specified depth or 
@@ -59,10 +58,13 @@ as well we can provide what is essentially a global light source.
 </p> 
 
 To simulate more traditional cameras, we can mimic the effect of a lens by sampling our rays along some simulated aperature. A more comprehensive overview is detailed in [PBRT 5.2.3](https://pbr-book.org/4ed/Cameras_and_Film/Projective_Camera_Models#TheThinLensModelandDepthofField).  
-Here's what the above scene looks like without depth of field effects:
+
+Here's what the above scene looks like without depth of field effects:  
+
 ![](img/dof1.png)
 
 ### Stochastic Sampled Antialiasing
+![](img/lizard.png) 
 Antialising in a path tracer is essentially free as we can simply jitter our rays within the pixel each iteration. Thus by adding some noise to our ray directions each iteration we can achieve antialiasing.
 
 ## Analysis

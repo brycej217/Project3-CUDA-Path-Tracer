@@ -93,7 +93,7 @@ void Scene::initCamera(const aiScene* scene)
     {
         // otherwise we copy the values from the cornell box json
         fovy = 45.0;
-        camera.position = glm::vec3(0, 0, 800); // open
+        camera.position = glm::vec3(0, 0, 0);
         camera.lookAt = camera.position + glm::vec3(0.0, 0.0, -5.0);
         camera.up = glm::vec3(0.0, 1.0, 0.0);
     }
@@ -139,8 +139,14 @@ void Scene::convertMats(const aiScene* scene)
             m.emissive = glm::vec3(ke.r, ke.g, ke.b);
 
             float strength = 0.0f;
-            aim->Get(AI_MATKEY_EMISSIVE_INTENSITY, strength);
-            m.emittance = strength;
+            if (AI_SUCCESS == aim->Get(AI_MATKEY_EMISSIVE_INTENSITY, strength))
+            {
+                m.emittance = strength;
+            }
+            else
+            {
+                m.emittance = 0.0f;
+            }
         }
         
         // metallic/roughness
