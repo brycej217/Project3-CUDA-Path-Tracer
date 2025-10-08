@@ -8,10 +8,10 @@ CUDA Path Tracer
 * Tested on: Windows 11, Intel(R) CORE(TM) Ultra 9 275HX @ 2.70GHz 32.0GB, NVIDIA GeFORCE RTX 5080 Laptop GPU 16384MB
 
 # CIS 5650 Project 3 - Path Tracer
-![](img/splash.png)
 ![](img/splash2.png)
-![](img/open.png)
+![](img/splash.png)
 ![](img/chinese.png)
+![](img/open.png)
 This project involved creating a path-traced renderer using CUDA. All of the path tracing logic is executed on CUDA kernels, the result of which is transferred to an OpenGL texture object for display.
 
 ### Path Tracing
@@ -29,13 +29,15 @@ on other parts of the project outside of file parsing logic.
 ### Texture Mapping
 ![](img/alltex.png)
 Texture mapping is a common technique for adding realism to objects in a scene. This path tracer takes advantage of 3 types of texture mapping, diffuse, normal, and roughness mapping, all 3 of which we can visualize respectively below:  
-![](img/notex.png)
-![](img/difftex.png)
-![](img/normal.png)
-![](img/roughness.png)
+<p align="center">
+  <img src="img/notex.png" width="200"/>
+  <img src="img/difftex.png" width="200"/><br/>
+  <img src="img/normal.png" width="200"/>
+  <img src="img/roughness.png" width="200"/>
+</p>
 
 ### Imperfect Specular Reflection
-![](img/impfspec.png)
+![](img/impfspec.png)  
 This path tracer utilizes roughness by calculating a specular reflection vector and a diffuse reflection vector (sample from a cosine hemisphere), and mixes between these two based on the roughness of the material. 
 This provides a convincing imperfect specular reflection affect without PBR. Above you can see roughness values varying from 0.0 to 1.0 across the grid.  
 
@@ -43,13 +45,15 @@ This provides a convincing imperfect specular reflection affect without PBR. Abo
 ![](img/env1.png)
 ![](img/env2.png)
 ![](img/env3.png)
-![](img/env4.png)
+![](img/env4.png)  
+
 When a ray does not intersect geometry, rather than simply coloring the pixel based on some clear value, we can instead sample from an image to provide an environment map effect. By adjusting ray radiance by these values 
 as well we can provide what is essentially a global light source.
 
 ### Depth of Field
 ![](img/dof2.png)
-![](img/dof3.png)
+![](img/dof3.png)  
+
 To simulate more traditional cameras, we can mimic the effect of a lens by sampling our rays along some simulated aperature. A more comprehensive overview is detailed in [PBRT 5.2.3](https://pbr-book.org/4ed/Cameras_and_Film/Projective_Camera_Models#TheThinLensModelandDepthofField).  
 Here's what the above scene looks like without depth of field effects:
 ![](img/dof1.png)
@@ -69,9 +73,12 @@ various features. The path tracer was tuned to a resolution of 800 x 800 (for 64
 Since our path tracer is being executed on the GPU, we take advantage of the inherit parallelism of the GPU and implement our path tracer using CUDA kernels. Intuitively, each ray corresponds 
 to a thread executing on the GPU. This parallelism was further optimized with 3 major techniques, namely bounding volume hierarchies, early termination and material sorting. Below is an analysis of both total iteration runtime 
 as well as kernel runtime analysis using NSight Compute, the results of which will be discussed in the feature's respective section:   
+
 ![](img/iterpf.png)
 ![](img/kernelpf.png)  
+
 We will also be discussing the path tracer's performance in closed scenes, which can be scene in the following charts:  
+
 ![](img/iterclosed.png)
 ![](img/kernclosed.png)  
 
@@ -82,9 +89,12 @@ a lot of geometry. A solution to this is to split up the space into a hierarchic
 not possibly hit any geometry within its volume and so we no longer have to check the ray against those geometries. Taking this to its logical conclusion, we can enforce a tree like data structure where the root encloses all 
 geometry in the scene, its children enclose different halves, and so on. Thus, when determining ray intersections, we can simply traverse this tree like structure until we reach a leaf node, each of the geometries of which our rays can test against.    
 Ths particular implementation determine a node as terminal if it contained less than or equal to a desired leaf geometry count.    
+
 This path tracer's particular implementation of a BVH utilized details from both [Jacco Bikker's blog](https://jacco.ompf2.com/2022/04/13/how-to-build-a-bvh-part-1-basics/) and [Peter Shirley's Ray Tracing: The Next Week](https://www.realtimerendering.com/raytracing/Ray%20Tracing_%20The%20Next%20Week.pdf). The above visualization 
-courtesy of [stororokw](https://www.youtube.com/watch?v=YkxBEEJTFmI) on YouTube.  
-![](img/bvhana.png)
+is courtesy of [stororokw](https://www.youtube.com/watch?v=YkxBEEJTFmI) on YouTube.  
+
+![](img/bvhana.png)  
+
 The above analysis looks somewhat silly, but it illustrates that bounding volume hierarchies are essentially required for any non-trivial scene. I was almost unable to interact with the path tracer with it disabled, 
 iterations taking an unacceptable over 8.7 seconds to execute. As we can see, most of this runtime comes from the compute intersections kernel as expected, shade intersection and ray generation taking the same amount of time as they would with it enabled. Thus, 
 BVH provides the most significant performance speedup, improving performance by over 1300%.
@@ -109,6 +119,7 @@ kernel as we expected since memory access overhead was reduced. However, it also
 
 ## Visual Improvemnts Performance Analysis
 Below is an analysis of both total iteration runtime as well as kernel runtime analysis using NSight Compute, the results of which will be discussed in the feature's respective section:   
+
 ![](img/itervis.png)
 ![](img/kernvis.png)  
 
@@ -134,9 +145,12 @@ This would allow for much more efficient memory usage than simply having each tr
 
 ## Credits
 Again thank you to the [Assimp team](https://github.com/assimp/assimp) for their asset loading library, Matt Pharr, Wenzel Jakob, and Greg Humphreys of [PBRT](https://pbr-book.org/4ed/Cameras_and_Film/Projective_Camera_Models#TheThinLensModelandDepthofField) for their Monte Carlo path tracing resources, 
-and [Jacco Bikker](https://jacco.ompf2.com/2022/04/13/how-to-build-a-bvh-part-1-basics/) and [Peter Shirley](https://www.realtimerendering.com/raytracing/Ray%20Tracing_%20The%20Next%20Week.pdf) for their BVH learning resources. Thank you as well to the Sketchfab artists 
+and [Jacco Bikker](https://jacco.ompf2.com/2022/04/13/how-to-build-a-bvh-part-1-basics/) and [Peter Shirley](https://www.realtimerendering.com/raytracing/Ray%20Tracing_%20The%20Next%20Week.pdf) for their BVH learning resources.  
+
+Thank you as well to the Sketchfab artists 
 [dylanheyes](https://sketchfab.com/dylanheyes) for their [White Modern Living Room](https://sketchfab.com/3d-models/white-modern-living-room-afb8cb0cbee1488caf61471ef14041e9) asset, [x2w-soda](https://sketchfab.com/x2w-soda) for their [Chiikawa](https://sketchfab.com/3d-models/chiikawa-67171ba268ce4ab6a7f3f94db9c9a8eb) model, 
 [znkim](https://sketchfab.com/zinookeem) for their [Usagi](https://sketchfab.com/3d-models/usagi-chiikawa-4353fc3c1f664784bfd33608c6cff125) model, [abhayexe](https://sketchfab.com/abhayexe) for their [Chinese Statue VR](https://sketchfab.com/3d-models/chinese-statue-vr-a5089f8d5d2045ef9d1f4b25176a84c6) model, 
-and [JHS-Art](https://sketchfab.com/Nidhoeggr) for their [Dragon Wacom](https://sketchfab.com/3d-models/dragon-wacom-penholder-or-tabletop-figure-9fd9fb3d4bc64c2fb56640ab620b72f4) model.    
+and [JHS-Art](https://sketchfab.com/Nidhoeggr) for their [Dragon Wacom](https://sketchfab.com/3d-models/dragon-wacom-penholder-or-tabletop-figure-9fd9fb3d4bc64c2fb56640ab620b72f4) model.  
+
 ![](img/superdrag.png)  
 And thank you for reading!
