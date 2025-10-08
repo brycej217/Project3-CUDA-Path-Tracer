@@ -59,7 +59,8 @@ __device__ vec3 sampleEnv(PathSegment& pathSegment, cudaTextureObject_t* env)
     float v = 0.5f - asinf(glm::clamp(dir.y, -1.f, 1.f)) / PI;
 
     float4 c = tex2D<float4>(*env, u, v);
-    return vec3(c.x, c.y, c.z);
+    vec3 color = vec3(c.x, c.y, c.z);
+    return glm::clamp(color, vec3(0.0f, 0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f) * 100.0f);
 }
 
 __device__ Sample sampleBSDF(
@@ -67,9 +68,9 @@ __device__ Sample sampleBSDF(
     ShadeableIntersection& intersection,
     const Material &m,
     thrust::default_random_engine &rng,
-    cudaTextureObject_t* textures)
+    cudaTextureObject_t* textures,
+    bool texturing)
 {
-
     Sample sample;
     vec2 uv = intersection.uv;
 
@@ -77,21 +78,25 @@ __device__ Sample sampleBSDF(
     vec3 color = m.color;
     float roughness = m.roughness;
     float metallic = m.metallic;
-    if (m.normTexId >= 0)
+    
+    if (texturing)
     {
-        float4 n = tex2D<float4>(textures[m.normTexId], uv.x, uv.y);
-        vec3 normal = normalize(vec3(n.x, n.y, n.z) * 2.0f - 1.0f);
-    }
-    if (m.diffTexId >= 0)
-    {
-        float4 c = tex2D<float4>(textures[m.diffTexId], uv.x, uv.y);
-        color = vec3(c.x, c.y, c.z);
-    }
-    if (m.roughTexId >= 0)
-    {
-        float4 r = tex2D<float4>(textures[m.roughTexId], uv.x, uv.y);
-        metallic = glm::clamp(r.x, 0.0f, 1.0f);
-        roughness = glm::clamp(r.y, 0.0f, 1.0f);
+        if (m.normTexId >= 0)
+        {
+            float4 n = tex2D<float4>(textures[m.normTexId], uv.x, uv.y);
+            normal = normalize(vec3(n.x, n.y, n.z) * 2.0f - 1.0f);
+        }
+        if (m.diffTexId >= 0)
+        {
+            float4 c = tex2D<float4>(textures[m.diffTexId], uv.x, uv.y);
+            color = vec3(c.x, c.y, c.z);
+        }
+        if (m.roughTexId >= 0)
+        {
+            float4 r = tex2D<float4>(textures[m.roughTexId], uv.x, uv.y);
+            metallic = glm::clamp(r.x, 0.0f, 1.0f);
+            roughness = glm::clamp(r.y, 0.0f, 1.0f);
+        }
     }
 
     vec3 diffDir = calculateRandomDirectionInHemisphere(normal, rng);
@@ -99,7 +104,7 @@ __device__ Sample sampleBSDF(
     vec3 intersect = pathSegment.ray.origin + pathSegment.ray.direction * intersection.t;
 
     sample.wi.origin = intersect + normal * EPSILON;
-    
+
     sample.wi.direction = glm::mix(refDir, diffDir, roughness);
 
     sample.lo = color;

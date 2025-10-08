@@ -46,4 +46,5 @@ __device__ Sample sampleBSDF(
     ShadeableIntersection& intersection,
     const Material& m,
     thrust::default_random_engine& rng,
-    cudaTextureObject_t* textures);
+    cudaTextureObject_t* textures,
+    bool texturing);

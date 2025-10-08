@@ -124,7 +124,7 @@ struct Material
     bool hasSpecular;
     float hasReflective;
     float hasRefractive;
-    float indexOfRefraction;
+    float ior;
     float emittance;
 
     int diffTexId = -1;
@@ -142,8 +142,8 @@ struct Camera
     glm::vec3 right;
     glm::vec2 fov;
     glm::vec2 pixelLength;
-    float lensRadius = 1.0f;
-    float focalDistance = 60.0f;
+    float lensRadius = 0.25f;
+    float focalDistance = 200.0f;
 };
 
 struct RenderState

@@ -282,13 +282,20 @@ void RenderImGui()
     if (ImGui::Checkbox("Early Termination", &scene->streamCompaction)) changed = true;
     if (ImGui::Checkbox("Material Sort", &scene->matSort)) changed = true;
     if (ImGui::Checkbox("Environment Mapping", &scene->environmentMapping)) changed = true;
+    if (ImGui::Checkbox("Texture Mapping", &scene->texturing)) changed = true;
+    if (ImGui::Checkbox("BVH", &scene->bvh)) changed = true;
     if (ImGui::Checkbox("Depth of Field", &scene->dof)) changed = true;
     if (ImGui::SliderInt("Trace Depth", &scene->traceDepth, 1, 12)) changed = true;
     if (ImGui::SliderInt("Iterations", &scene->iterations, 1, 50000)) changed = true;
     if (ImGui::SliderFloat("Lens Radius", &scene->state.camera.lensRadius, 0.0f, 1.0f)) changed = true;
     if (ImGui::SliderFloat("Focal Distance", &scene->state.camera.focalDistance, 0.1f, 200.0f)) changed = true;
-    if (ImGui::SliderFloat("Env Gain", &scene->envGain, 0.0f, 1.0f)) changed = true;
+    if (ImGui::SliderFloat("Env Gain", &scene->envGain, 0.0f, 2.5f)) changed = true;
     if (ImGui::SliderInt("BVH Leaf Geom Count", &scene->geomsPerLeaf, 1, 20)) changed = true;
+    auto& cam = scene->state.camera;
+    ImGui::Text("Camera Position: (%.3f, %.3f, %.3f)",
+        cam.position.x, cam.position.y, cam.position.z);
+    ImGui::Text("Camera Look At: (%.3f, %.3f, %.3f)",
+        cam.lookAt.x, cam.lookAt.y, cam.lookAt.z);
 
     scene->state.iterations = scene->iterations;
     scene->state.traceDepth = scene->traceDepth;
@@ -498,6 +505,10 @@ void runCuda()
 
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
+    float step = 0.25f;
+    glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+    Camera& cam = renderState->camera;
+
     if (action == GLFW_PRESS)
     {
         switch (key)
@@ -512,8 +523,23 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
             case GLFW_KEY_SPACE:
                 camchanged = true;
                 renderState = &scene->state;
-                Camera& cam = renderState->camera;
                 cam.lookAt = ogLookAt;
+                break;
+        }
+    }
+    if (action != GLFW_RELEASE)
+    {
+        switch (key)
+        {
+            case GLFW_KEY_E:
+                cam.lookAt += up * step;
+                cam.position += up * step;
+                camchanged = true;
+                break;
+            case GLFW_KEY_Q:
+                cam.lookAt -= up * step;
+                cam.position -= up * step;
+                camchanged = true;
                 break;
         }
     }
@@ -565,6 +591,8 @@ void mousePositionCallback(GLFWwindow* window, double xpos, double ypos)
 
         cam.lookAt -= (float)(xpos - lastX) * right * 0.01f;
         cam.lookAt += (float)(ypos - lastY) * forward * 0.01f;
+        cam.position -= (float)(xpos - lastX) * right * 0.01f;
+        cam.position += (float)(ypos - lastY) * forward * 0.01f;
         camchanged = true;
     }
 

@@ -62,9 +62,14 @@ public:
     bool streamCompaction = true;
     bool matSort = false;
     bool environmentMapping = true;
-    int traceDepth = 8;
+
+    bool texturing = true;
+    bool bvh = true;
+
+    int traceDepth = 2;
     int iterations = 5000;
+
+    bool dof = false;
+    float envGain = 1.0f;
     int geomsPerLeaf = 2;
-    bool dof = true;
-    float envGain = 0.5f;
 };

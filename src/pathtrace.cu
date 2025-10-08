@@ -293,7 +293,8 @@ __global__ void computeIntersections(
     int geoms_size,
     ShadeableIntersection* intersections,
     int* keys1,
-    int* keys2)
+    int* keys2,
+    bool bvh)
 {
     int path_index = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -308,25 +309,33 @@ __global__ void computeIntersections(
         bool outside = true;
 
         // traverse BVH
-        int stack[64];
-        int sp = 0;
-        stack[sp++] = 0;
-
-        while (sp)
+        if (bvh)
         {
-            int i = stack[--sp];
+            int stack[64];
+            int sp = 0;
+            stack[sp++] = 0;
 
-            if (i < 0 || !nodes[i].aabb.hit(pathSegments[path_index].ray)) continue;
-
-            if (nodes[i].numGeoms > 0)
+            while (sp)
             {
-                intersectGeoms(geoms, geoms_size, pathSegments, path_index, nodes[i].startGeom, nodes[i].numGeoms, t_min, hit_geom_index, intersect_point, normal, uv);
-                continue;
-            }
+                int i = stack[--sp];
 
-            stack[sp++] = nodes[i].right;
-            stack[sp++] = nodes[i].left;
+                if (i < 0 || !nodes[i].aabb.hit(pathSegments[path_index].ray)) continue;
+
+                if (nodes[i].numGeoms > 0)
+                {
+                    intersectGeoms(geoms, geoms_size, pathSegments, path_index, nodes[i].startGeom, nodes[i].numGeoms, t_min, hit_geom_index, intersect_point, normal, uv);
+                    continue;
+                }
+
+                stack[sp++] = nodes[i].right;
+                stack[sp++] = nodes[i].left;
+            }
         }
+        else
+        {
+            intersectGeoms(geoms, geoms_size, pathSegments, path_index, 0, geoms_size, t_min, hit_geom_index, intersect_point, normal, uv);
+        }
+
 
         if (hit_geom_index == -1)
         {
@@ -356,7 +365,8 @@ __global__ void shadeIntersection(
     cudaTextureObject_t* env,
     bool hasEnv,
     bool enableEnv,
-    float envGain)
+    float envGain,
+    bool texturing)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -378,7 +388,7 @@ __global__ void shadeIntersection(
             {
                 pathSegments[idx].radiance = vec3(0.0f);
                 
-                Sample sample = sampleBSDF(pathSegments[idx], intersection, material, rng, textures);
+                Sample sample = sampleBSDF(pathSegments[idx], intersection, material, rng, textures, texturing);
 
                 pathSegments[idx].throughput *= sample.lo;
 
@@ -483,7 +493,8 @@ void pathtrace(uchar4* pbo, int iter)
             hst_scene->triangles.size(),
             dev_intersections,
             dev_keys1,
-            dev_keys2
+            dev_keys2,
+            hst_scene->bvh
             );
         checkCUDAError("trace one bounce");
         cudaDeviceSynchronize();
@@ -504,7 +515,8 @@ void pathtrace(uchar4* pbo, int iter)
             dev_env,
             hst_scene->hasEnv,
             enableEnv,
-            hst_scene->envGain
+            hst_scene->envGain,
+            hst_scene->texturing
             );
 
         // stream compaction
