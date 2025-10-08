@@ -9,6 +9,7 @@ CUDA Path Tracer
 
 # CIS 5650 Project 3 - Path Tracer
 ![](img/splash2.png)
+![](img/splash3.png)
 ![](img/chinese.png)
 This project involved creating a path-traced renderer using CUDA. All of the path tracing logic is executed on CUDA kernels, the result of which is transferred to an OpenGL texture object for display.
 
@@ -159,7 +160,7 @@ Again thank you to the [Assimp team](https://github.com/assimp/assimp) for their
 and [Jacco Bikker](https://jacco.ompf2.com/2022/04/13/how-to-build-a-bvh-part-1-basics/) and [Peter Shirley](https://www.realtimerendering.com/raytracing/Ray%20Tracing_%20The%20Next%20Week.pdf) for their BVH learning resources.  
 
 Thank you as well to the Sketchfab artists 
-[dylanheyes](https://sketchfab.com/dylanheyes) for their [White Modern Living Room](https://sketchfab.com/3d-models/white-modern-living-room-afb8cb0cbee1488caf61471ef14041e9) asset, [x2w-soda](https://sketchfab.com/x2w-soda) for their [Chiikawa](https://sketchfab.com/3d-models/chiikawa-67171ba268ce4ab6a7f3f94db9c9a8eb) model, 
+[dylanheyes](https://sketchfab.com/dylanheyes) for their [White Modern Living Room](https://sketchfab.com/3d-models/white-modern-living-room-afb8cb0cbee1488caf61471ef14041e9) and [Minimalistic Modern Bedroom](https://sketchfab.com/3d-models/minimalistic-modern-bedroom-4f3db3cb57bd4bce886f7b9a13273a2f) assets, [x2w-soda](https://sketchfab.com/x2w-soda) for their [Chiikawa](https://sketchfab.com/3d-models/chiikawa-67171ba268ce4ab6a7f3f94db9c9a8eb) model, 
 [znkim](https://sketchfab.com/zinookeem) for their [Usagi](https://sketchfab.com/3d-models/usagi-chiikawa-4353fc3c1f664784bfd33608c6cff125) model, [abhayexe](https://sketchfab.com/abhayexe) for their [Chinese Statue VR](https://sketchfab.com/3d-models/chinese-statue-vr-a5089f8d5d2045ef9d1f4b25176a84c6) model, 
 and [JHS-Art](https://sketchfab.com/Nidhoeggr) for their [Dragon Wacom](https://sketchfab.com/3d-models/dragon-wacom-penholder-or-tabletop-figure-9fd9fb3d4bc64c2fb56640ab620b72f4) model.  
 

@@ -17,8 +17,8 @@
 #include <stb_image.h>
 #include <stb_image_write.h>
 
-#define WIDTH 800
-#define HEIGHT 800
+#define WIDTH 1920
+#define HEIGHT 1080
 
 using namespace std;
 using json = nlohmann::json;
@@ -92,7 +92,7 @@ void Scene::initCamera(const aiScene* scene)
     else
     {
         // otherwise we copy the values from the cornell box json
-        fovy = 45.0;
+        fovy = 30.0;
         camera.position = glm::vec3(0, 0, 0);
         camera.lookAt = camera.position + glm::vec3(0.0, 0.0, -5.0);
         camera.up = glm::vec3(0.0, 1.0, 0.0);
@@ -141,11 +141,7 @@ void Scene::convertMats(const aiScene* scene)
             float strength = 0.0f;
             if (AI_SUCCESS == aim->Get(AI_MATKEY_EMISSIVE_INTENSITY, strength))
             {
-                m.emittance = strength;
-            }
-            else
-            {
-                m.emittance = 0.0f;
+                m.emittance = max(0.0f, strength);
             }
         }
         
